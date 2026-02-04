@@ -18,6 +18,14 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# AI Models Root Directory
+MODELS_ROOT = BASE_DIR / 'models'
+
+# Specific Model Paths
+BAR_MODEL_PATH = MODELS_ROOT / 'bar' / 'best.pt'
+DEADLIFT_ERROR_MODEL_PATH = MODELS_ROOT / 'deadlift' / 'error' / 'PatchTST.pt'
+DEADLIFT_POSE_MODEL_PATH = MODELS_ROOT / 'deadlift' / 'pose' / 'yolo11x-pose.pt'
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/

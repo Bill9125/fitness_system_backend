@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
+app_name = 'fitness'
 urlpatterns = [
-    # catslab.ee.ncku.edu.tw:9125/api/analysis/list
-    path('list/', views.get_recordings, name='recording-list'),
+    # 現在網址會變成 api/analysis/1/
+    path('<int:pk>/result', views.get_detection_result, name='get-detection-result'), 
 ]
