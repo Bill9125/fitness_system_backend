@@ -24,7 +24,10 @@ MODELS_ROOT = BASE_DIR / 'models'
 # Specific Model Paths
 BAR_MODEL_PATH = MODELS_ROOT / 'bar' / 'best.pt'
 DEADLIFT_ERROR_MODEL_PATH = MODELS_ROOT / 'deadlift' / 'error' / 'PatchTST.pt'
-DEADLIFT_POSE_MODEL_PATH = MODELS_ROOT / 'deadlift' / 'pose' / 'yolo11x-pose.pt'
+DEADLIFT_POSE_MODEL_PATH = MODELS_ROOT / 'deadlift' / 'pose' / 'yolo11n-pose.pt'
+BENCHPRESS_ERROR_MODEL_PATH = MODELS_ROOT / 'benchpress' / 'error' / 'PatchTST.pt'
+BENCHPRESS_REAR_POSE_MODEL_PATH = MODELS_ROOT / 'benchpress' / 'pose' / 'rear_11n.pt'
+BENCHPRESS_TOP_POSE_MODEL_PATH = MODELS_ROOT / 'benchpress' / 'pose' / 'top_11n.pt'
 
 
 # Quick-start development settings - unsuitable for production
@@ -57,6 +60,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'users.apps.UsersConfig',
     'fitness_analysis.apps.FitnessAnalysisConfig',
+    'rest_framework',
+    'drf_spectacular',
 ]
 
 MIDDLEWARE = [
@@ -142,3 +147,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Fitness System API',
+    'DESCRIPTION': '健身動作分析 API',
+    'VERSION': '1.0.0',
+}

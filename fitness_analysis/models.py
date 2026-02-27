@@ -21,17 +21,11 @@ class Repetition(models.Model):
     recording = models.ForeignKey(Recording, on_delete=models.CASCADE, related_name='repetitions')
     start_frame = models.IntegerField(null=True, blank=True)
     end_frame = models.IntegerField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'repetitions'
-
-class ErrorScore(models.Model):
-    rep = models.ForeignKey(Repetition, on_delete=models.CASCADE, related_name='error_scores')
     error = models.CharField(max_length=255, null=True, blank=True)
     score = models.FloatField(null=True, blank=True)
 
     class Meta:
-        db_table = 'error_score'
+        db_table = 'repetitions'
 
 class RecommendedVideo(models.Model):
     title = models.CharField(max_length=255, null=True, blank=True)

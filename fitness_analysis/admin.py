@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Recording, Repetition, ErrorScore, RecommendedVideo
+from .models import Recording, Repetition, RecommendedVideo
 
 @admin.register(Recording)
 class RecordingAdmin(admin.ModelAdmin):
@@ -9,11 +9,7 @@ class RecordingAdmin(admin.ModelAdmin):
 
 @admin.register(Repetition)
 class RepetitionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'recording', 'start_frame', 'end_frame')
-
-@admin.register(ErrorScore)
-class ErrorScoreAdmin(admin.ModelAdmin):
-    list_display = ('rep', 'error', 'score')
+    list_display = ('id', 'recording', 'start_frame', 'end_frame', 'error', 'score')
 
 @admin.register(RecommendedVideo)
 class RecommendedVideoAdmin(admin.ModelAdmin):

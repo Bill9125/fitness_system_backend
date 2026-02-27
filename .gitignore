@@ -4,3 +4,5 @@ BenchpressDataset
 DeadliftDataset
 test
 models
+recordings
+settings.py
