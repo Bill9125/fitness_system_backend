@@ -1,13 +1,9 @@
-from django.http import JsonResponse, FileResponse, Http404
+from django.http import JsonResponse, FileResponse, Http404, StreamingHttpResponse
 import os
 import json
-import cv2
-import copy
-import asyncio
-import subprocess
-import re
+import time
 from .models import Recording, Repetition, RecommendedVideo
-from .utils import ProcessorFactory
+from .utils import ProcessorFactory, OpenAIClient
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import api_view
@@ -46,7 +42,10 @@ def get_detection_result(request, recording_id: int):
     if repetitions.exists():
         sport_type = recording.sport
         processor = ProcessorFactory.get_processor(sport_type)
+        start_time = time.time()
         processor.run(folder)
+        end_time = time.time()
+        print(f"[get_detection_result] Processing time: {end_time - start_time}")
 
     score_json_path = os.path.join(folder, "config/Score.json")
     bar_position_json_path = os.path.join(folder, "config/Bar_Position.json")
@@ -154,20 +153,129 @@ async def get_videos(request, recording_id: int, vision_index: int):
 #         os.rename(temp_path, mp4_path)
 #     return mp4_path
 
-def read_feedback(request, item_id: int):
+@extend_schema(
+    summary="取得 AI 健身建議（串流形式）",
+    parameters=[
+        OpenApiParameter(name='recording_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='Recording ID')
+    ],
+    responses={200: str}
+)
+@api_view(['GET'])
+def get_suggestion(request, recording_id: int):
     try:
-        recording = Recording.objects.get(id=item_id)
+        recording = Recording.objects.get(id=recording_id)
     except Recording.DoesNotExist:
         raise Http404("Recording not found")
-    
-    error = recording.training_suggestion # 假設存這裡
-    
-    # 這裡需要 api_func 的定義，若沒有會報錯
-    # feedback_prompt = f"..."
-    # feedback_result = api_func.get_openai_response(feedback_prompt)
-    # return JsonResponse({'result': extract_markdown(feedback_result)})
-    
-    return JsonResponse({'error': 'api_func not implemented'}, status=501)
 
-def extract_markdown(llm_output: str) -> str:
-    return re.sub(r'^```(?:markdown)?\n([\s\S]+?)\n```$', r'\1', llm_output.strip())
+    if recording.training_suggestion:
+        def stored_suggestion_gen():
+            yield f"data: {json.dumps({'data': recording.training_suggestion})}\n\n"
+            yield f"data: {json.dumps({'event': 'end', 'data': ''})}\n\n"
+        return StreamingHttpResponse(stored_suggestion_gen(), content_type="text/event-stream")
+
+    openai_client = OpenAIClient()
+    gen = openai_client.get_suggestion_stream(recording_id)
+
+    def save_suggestion_wrapper(generator):
+        full_content = ""
+        for chunk_str in generator:
+            yield chunk_str
+            try:
+                clean_chunk = chunk_str.strip()
+                if clean_chunk.startswith("data: "):
+                    data_obj = json.loads(clean_chunk[6:])
+                    if "data" in data_obj and "event" not in data_obj:
+                        full_content += data_obj["data"]
+            except:
+                pass
+        
+        if full_content:
+            recording.training_suggestion = OpenAIClient.extract_markdown(full_content)
+            recording.save()
+
+    return StreamingHttpResponse(save_suggestion_wrapper(gen), content_type="text/event-stream")
+
+@extend_schema(
+    summary="取得 AI 訓練菜單（串流形式）",
+    parameters=[
+        OpenApiParameter(name='recording_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='Recording ID')
+    ],
+    responses={200: str}
+)
+@api_view(['GET'])
+def get_workout_plan(request, recording_id: int):
+    try:
+        recording = Recording.objects.get(id=recording_id)
+    except Recording.DoesNotExist:
+        raise Http404("Recording not found")
+
+    if recording.workout_plan:
+        def stored_plan_gen():
+            yield f"data: {json.dumps({'data': recording.workout_plan})}\n\n"
+            yield f"data: {json.dumps({'event': 'end', 'data': ''})}\n\n"
+        return StreamingHttpResponse(stored_plan_gen(), content_type="text/event-stream")
+
+    openai_client = OpenAIClient()
+    gen = openai_client.get_workout_plan_stream(recording_id)
+
+    def save_plan_wrapper(generator):
+        full_content = ""
+        for chunk_str in generator:
+            yield chunk_str
+            try:
+                clean_chunk = chunk_str.strip()
+                if clean_chunk.startswith("data: "):
+                    data_obj = json.loads(clean_chunk[6:])
+                    if "data" in data_obj and "event" not in data_obj:
+                        full_content += data_obj["data"]
+            except:
+                pass
+        
+        if full_content:
+            recording.workout_plan = OpenAIClient.extract_markdown(full_content)
+            recording.save()
+
+    return StreamingHttpResponse(save_plan_wrapper(gen), content_type="text/event-stream")
+
+@extend_schema(
+    summary="取得 AI 推薦影片",
+    parameters=[
+        OpenApiParameter(name='recording_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='Recording ID')
+    ],
+    responses={200: str}
+)
+@api_view(['GET'])
+def read_video_list(recording_id: int):
+    recording = Recording.objects.get(id=recording_id)
+    if not recording or "error" not in recording:
+        raise HTTPException(status_code=404, detail="Recording or error feedback not found")
+    error = recording["error"]
+    with open("video_list.json", mode='r', encoding='utf-8') as json_file:
+        movement = json.load(json_file)
+
+    movement_list = ['平板支撐', '臀推', '深蹲', '傳統硬舉', '羅馬尼亞硬舉', '臥推', '引體向上', '肩推']
+    recommend_video_prompt = """你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--%s，你會建議我這些動作裡的哪些%s？請回我一個格式一樣的 list of string""" % (error, ' '.join(movement_list))
+    times = 0
+    while True:
+        result = []
+        try:
+            videos = api_func.get_openai_response(recommend_video_prompt)
+            print(videos)
+            # 用正則抓中括號內部的資料
+            match = re.search(r'\[.*\]', videos, re.DOTALL)
+            list_text = match.group(0)
+            # 用 ast.literal_eval 將字串轉為真正的 list of dict
+            video_list = ast.literal_eval(list_text)
+            for text in video_list:
+                if text in movement_list:
+                    video = movement[text][0]
+                    video["video_id"] = video['url'].split("v=")[-1]
+                    result.append(video)
+            break
+        except:
+            times += 1
+            if times >= 5:
+                break
+            continue
+
+    return {'result': result}

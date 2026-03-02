@@ -32,8 +32,21 @@ class RecommendedVideo(models.Model):
     video_url = models.CharField(max_length=255, null=True, blank=True)
     target_error = models.CharField(max_length=255, null=True, blank=True)
     
-    # 與 Recording 的多對多關聯
-    recordings = models.ManyToManyField(Recording, related_name='recommended_videos', blank=True)
+    # 與 Recording 的多對多關聯，指定 through model 以控制 table 名稱與欄位
+    recordings = models.ManyToManyField(
+        Recording, 
+        through='RecordingRecommendation',
+        related_name='recommended_videos', 
+        blank=True
+    )
 
     class Meta:
         db_table = 'recommended_video'
+
+class RecordingRecommendation(models.Model):
+    recording = models.ForeignKey(Recording, on_delete=models.CASCADE, db_column='recording_id')
+    video = models.ForeignKey(RecommendedVideo, on_delete=models.CASCADE, db_column='video_id')
+
+    class Meta:
+        db_table = 'recording_recommendations'
+        unique_together = ('recording', 'video')
