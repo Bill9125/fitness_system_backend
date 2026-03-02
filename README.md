@@ -18,6 +18,12 @@ This is the backend for the Fitness System, built with **Django** and **Django R
 - **API Documentation**: drf-spectacular (OpenAPI 3)
 - **AI Integration**: OpenAI API (for Suggestions and Workout Plans)
 
+## Models & Datasets
+
+The deep learning models used for action detection and error analysis are trained separately. For details regarding the model architectures, training processes, and dataset preparation, please refer to the dedicated training repository:
+
+👉 **[DLmodel_train](https://github.com/Bill9125/DLmodel_train)**
+
 ## Project Structure
 
 ```text
