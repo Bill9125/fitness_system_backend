@@ -2,15 +2,17 @@ from django.conf import settings
 import torch
 import numpy as np
 from ultralytics import YOLO
+import json
+import os
 
 from ..base_processor import BaseProcessor
 from ..common import (
     bar_frame, 
     bone_frame,
-    SKELETON_CONNECTIONS,
+    DEADLIFT_SKELETON_CONNECTIONS,
 )
-from ..tools.Deadlift_tool.interpolate import run_interpolation
-from ..tools.Deadlift_tool.bar_data_produce import run_bar_data_produce
+from ..tools.interpolate import run_interpolation
+from ..tools.bar_data_produce import run_bar_data_produce
 from ..tools.Deadlift_tool.data_produce import run_data_produce
 from ..tools.Deadlift_tool.data_split import run_data_split
 from ..tools.Deadlift_tool.predict import run_predict
@@ -21,7 +23,7 @@ class DeadliftProcessor(BaseProcessor):
         super().__init__()
         self.bar_model_path = settings.BAR_MODEL_PATH
         self.pose_model_path = settings.DEADLIFT_POSE_MODEL_PATH
-        self.skeleton_connections = SKELETON_CONNECTIONS
+        self.skeleton_connections = DEADLIFT_SKELETON_CONNECTIONS
 
     def load_models(self):
         device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
@@ -50,10 +52,10 @@ class DeadliftProcessor(BaseProcessor):
             processed_frame, sk_list, b_list = bar_frame(
                 frame, 
                 self.models['bar'], 
-                self.models['pose'], 
-                self.skeleton_connections, 
                 bar_file, 
-                frame_cnt
+                frame_cnt,
+                bone_model=self.models['pose'], 
+                skeleton_connections=self.skeleton_connections
             )
             
             # For Deadlift, bar data is also stored in specific format in b_list
@@ -108,3 +110,57 @@ class DeadliftProcessor(BaseProcessor):
             t0 = time.time()
             func(*args)
             print(f"[DeadliftProcessor] {name} time :", time.time() - t0)
+            
+    def get_result(self, video_path: str, recording=None):
+        result = {}
+        score_json_path = os.path.join(video_path, "config/Score.json")
+        bar_position_json_path = os.path.join(video_path, "config/Bar_Position.json")
+        hip_angle_json_path = os.path.join(video_path, "config/Hip_Angle.json")
+        knee_angle_json_path = os.path.join(video_path, "config/Knee_Angle.json")
+        knee_to_hip_json_path = os.path.join(video_path, "config/Knee_to_Hip.json")
+        split_info_json_path = os.path.join(video_path, "config/Split_info.json")
+        
+        if not os.path.exists(score_json_path):
+            return None
+        
+        with open(score_json_path, mode='r', encoding='utf-8') as json_file:
+            score_data = json.load(json_file)['results']
+        with open(bar_position_json_path, mode='r', encoding='utf-8') as json_file:
+            bar_position_data = json.load(json_file)
+        with open(hip_angle_json_path, mode='r', encoding='utf-8') as json_file:
+            hip_angle_data = json.load(json_file)
+        with open(knee_angle_json_path, mode='r', encoding='utf-8') as json_file:
+            knee_angle_data = json.load(json_file)
+        with open(knee_to_hip_json_path, mode='r', encoding='utf-8') as json_file:
+            knee_to_hip_data = json.load(json_file)
+        with open(split_info_json_path, mode='r', encoding='utf-8') as json_file:
+            split_info_data = json.load(json_file)
+        
+        # Write to DB only if a Recording ORM object is provided
+        if recording is not None:
+            from fitness_analysis.models import Repetition
+            for key, val in split_info_data.items():
+                rep_score = score_data.get(key, {}).get("score", 0)
+                errors = ','.join(
+                    error for error, conf in score_data.get(key, {}).items()
+                    if error != "score" and conf >= 0.5
+                )
+                Repetition.objects.update_or_create(
+                    recording=recording,
+                    start_frame=val.get('start'),
+                    defaults={
+                        'end_frame': val.get('end'),
+                        'score': rep_score,
+                        'error': errors
+                    }
+                )
+
+        result = {
+            'score': score_data,
+            'bar_position': bar_position_data,
+            'hip_angle': hip_angle_data,
+            'knee_angle': knee_angle_data,
+            'knee_to_hip': knee_to_hip_data,
+            'split_info': split_info_data
+        }
+        return result

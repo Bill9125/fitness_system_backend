@@ -19,7 +19,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # AI Models Root Directory
-MODELS_ROOT = BASE_DIR / 'models'
+MODELS_ROOT = BASE_DIR / 'fitness_system_models'
 
 # Specific Model Paths
 BAR_MODEL_PATH = MODELS_ROOT / 'bar' / 'best.pt'

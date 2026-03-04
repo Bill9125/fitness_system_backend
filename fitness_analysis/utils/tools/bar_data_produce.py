@@ -6,9 +6,10 @@ def run_bar_data_produce(dir, sport):
         dir, "coordinates_interpolated.txt")  # 你的 txt 檔案路徑
     if sport == 'deadlift':
         output_json_path = os.path.join(dir, "config", "Bar_Position.json")  # 輸出的 JSON 檔案
+        idx = 1 # X 中心
     elif sport == 'benchpress':
-        output_json_path = os.path.join(dir, 'Benchpress_data',
-                                        "Bar_Position.json")  # 輸出的 JSON 檔案
+        output_json_path = os.path.join(dir, 'config', "Bar_Position.json")  # 輸出的 JSON 檔案
+        idx = 2 # Y 中心
 
     # 初始化數據存儲
     frames = []
@@ -22,10 +23,10 @@ def run_bar_data_produce(dir, sport):
                 continue
 
             frame_count = int(parts[0])  # 幀數
-            x_center = float(parts[1])  # X 中心
+            center = float(parts[idx])  
 
             frames.append(frame_count)
-            values.append(x_center)
+            values.append(center)
 
     if values:
         x_min = min(values) * 0.9  # X 軸最小值，留 10% 緩衝

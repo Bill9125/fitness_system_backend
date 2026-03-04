@@ -2,7 +2,9 @@ from django.http import JsonResponse, FileResponse, Http404, StreamingHttpRespon
 import os
 import json
 import time
-from .models import Recording, Repetition, RecommendedVideo
+import re
+import ast
+from .models import Recording, Repetition, RecommendedVideo, RecordingRecommendation
 from .utils import ProcessorFactory, OpenAIClient
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
@@ -15,12 +17,17 @@ from rest_framework.response import Response
 )
 @api_view(['GET'])
 def get_user_recording_ids(request, user_id: int):
-    try:
-        recordings = Recording.objects.filter(user=user_id)
-        recording_ids = [recording.id for recording in recordings]
-        return JsonResponse({'recording_ids': recording_ids})
-    except Recording.DoesNotExist:
-        raise Http404("User not found")
+    # 直接回傳 list 格式，讓前端方便處理
+    recordings = Recording.objects.filter(user=user_id)
+    result = [
+        {
+            "id": r.id,
+            "sport": r.sport,
+            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        } 
+        for r in recordings
+    ]
+    return JsonResponse(result, safe=False)
     
 
 @extend_schema(
@@ -38,59 +45,17 @@ def get_detection_result(request, recording_id: int):
         raise Http404("Recording not found")
     repetitions = Repetition.objects.filter(recording=recording)
     folder = recording.folder
-    result = {}
-    if repetitions.exists():
-        sport_type = recording.sport
-        processor = ProcessorFactory.get_processor(sport_type)
+    sport_type = recording.sport
+    processor = ProcessorFactory.get_processor(sport_type)
+    if not repetitions.exists():
         start_time = time.time()
         processor.run(folder)
         end_time = time.time()
         print(f"[get_detection_result] Processing time: {end_time - start_time}")
-
-    score_json_path = os.path.join(folder, "config/Score.json")
-    bar_position_json_path = os.path.join(folder, "config/Bar_Position.json")
-    hip_angle_json_path = os.path.join(folder, "config/Hip_Angle.json")
-    knee_angle_json_path = os.path.join(folder, "config/Knee_Angle.json")
-    knee_to_hip_json_path = os.path.join(folder, "config/Knee_to_Hip.json")
-    split_info_json_path = os.path.join(folder, "config/Split_info.json")
-
-    if not os.path.exists(score_json_path):
+    result = processor.get_result(folder, recording=recording)
+    if not result:
         return JsonResponse({"error": "Config files not found"}, status=404)
-    with open(score_json_path, mode='r', encoding='utf-8') as json_file:
-        score_data = json.load(json_file)['results']
-    with open(bar_position_json_path, mode='r', encoding='utf-8') as json_file:
-        bar_position_data = json.load(json_file)
-    with open(hip_angle_json_path, mode='r', encoding='utf-8') as json_file:
-        hip_angle_data = json.load(json_file)
-    with open(knee_angle_json_path, mode='r', encoding='utf-8') as json_file:
-        knee_angle_data = json.load(json_file)
-    with open(knee_to_hip_json_path, mode='r', encoding='utf-8') as json_file:
-        knee_to_hip_data = json.load(json_file)
-    with open(split_info_json_path, mode='r', encoding='utf-8') as json_file:
-        split_info_data = json.load(json_file)
-        for key, val in split_info_data.items():
-            rep_score = score_data.get(key, [0])["score"]
-            errors = ''
-            for error, conf in score_data[key].items():
-                if error != "score" and conf >= 0.5:
-                    errors += error + ','
-            Repetition.objects.update_or_create(
-                recording=recording,
-                start_frame=val.get('start'),
-                end_frame=val.get('end'),
-                score=rep_score,
-                error=errors
-            )
-
-    result = {
-        'score': score_data,
-        'bar_position': bar_position_data,
-        'hip_angle': hip_angle_data,
-        'knee_angle': knee_angle_data,
-        'knee_to_hip': knee_to_hip_data,
-        'split_info': split_info_data
-    }
-    return JsonResponse(result)
+    return JsonResponse(result) 
 
 # 合併進 get_detection_result 裡面
 # def get_graph(request, item_id: int):
@@ -114,11 +79,11 @@ def get_detection_result(request, recording_id: int):
     summary="取得影片",
     parameters=[
         OpenApiParameter(name='recording_id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='Recording ID'),
-        OpenApiParameter(name='vision_index', type=OpenApiTypes.INT, location=OpenApiParameter.PATH, description='Vision Index')
+        OpenApiParameter(name='vision', type=OpenApiTypes.STR, location=OpenApiParameter.PATH, description='Vision')
     ],
     responses={200: dict}
 )
-async def get_videos(request, recording_id: int, vision_index: int):
+async def get_videos(request, recording_id: int, vision: str):
     # 注意：async view 不能用 @api_view（DRF 不支援），直接用 Django 原生 async view
     try:
         recording = await Recording.objects.aget(id=recording_id)
@@ -128,7 +93,7 @@ async def get_videos(request, recording_id: int, vision_index: int):
     from django.conf import settings
     # 將相對路徑轉為絕對路徑，避免 CWD 不同造成 os.path.exists 失敗
     folder = os.path.join(settings.BASE_DIR, recording.folder)
-    video_name = f"vision{vision_index}_drawed"
+    video_name = f"vision_{vision}_drawed"
     mp4_path = os.path.join(folder, f"{video_name}.mp4")
 
     print(f"[get_videos] Looking for: {mp4_path}, exists: {os.path.exists(mp4_path)}")
@@ -137,21 +102,6 @@ async def get_videos(request, recording_id: int, vision_index: int):
         return FileResponse(open(mp4_path, 'rb'), content_type="video/mp4")
 
     return JsonResponse({"error": f"Video not found: {mp4_path}"}, status=404)
-
-# def avi_to_mp4(folder, video_name):
-#     avi_path = os.path.join(folder, f"{video_name}.avi")
-#     mp4_path = os.path.join(folder, f"{video_name}.mp4")
-#     temp_path = os.path.join(folder, f"{video_name}.temp.mp4")
-
-#     if not os.path.exists(mp4_path):
-#         ffmpeg_cmd = [
-#             "ffmpeg", "-i", avi_path,
-#             "-c:v", "libx264", "-c:a", "aac",
-#             "-strict", "experimental", temp_path
-#         ]
-#         subprocess.run(ffmpeg_cmd, check=True)
-#         os.rename(temp_path, mp4_path)
-#     return mp4_path
 
 @extend_schema(
     summary="取得 AI 健身建議（串流形式）",
@@ -245,37 +195,77 @@ def get_workout_plan(request, recording_id: int):
     responses={200: str}
 )
 @api_view(['GET'])
-def read_video_list(recording_id: int):
-    recording = Recording.objects.get(id=recording_id)
-    if not recording or "error" not in recording:
-        raise HTTPException(status_code=404, detail="Recording or error feedback not found")
-    error = recording["error"]
-    with open("video_list.json", mode='r', encoding='utf-8') as json_file:
-        movement = json.load(json_file)
+def read_video_list(request, recording_id: int):
+    try:
+        recording = Recording.objects.get(id=recording_id)
+    except Recording.DoesNotExist:
+        raise Http404("Recording not found")
+
+    # 優先從資料庫撈取已儲存的推薦影片
+    recommend_videos = recording.recommended_videos.all()
+    if recommend_videos.exists():
+        result = [
+            {
+                "title": v.title,
+                "url": v.video_url,
+                "video_id": v.video_url.split("v=")[-1],
+                "target_error": v.target_error
+            }
+            for v in recommend_videos
+        ]
+        return JsonResponse({'result': result})
+
+    # 取得當前拍攝紀錄的所有錯誤
+    repetitions = recording.repetitions.all()
+    all_errors = set()
+    for rep in repetitions:
+        if rep.error:
+            # rep.error 可能包含多個以逗號隔開的錯誤：'error1,error2,'
+            errs = [e.strip() for e in rep.error.split(',') if e.strip()]
+            all_errors.update(errs)
+    
+    # 將所有錯誤整合為一個字串供提示詞使用
+    error_context = ', '.join(all_errors)
+    if not error_context:
+        # 如果沒有偵測到錯誤，可以回傳空 list 或預設提示
+        return JsonResponse({'result': []})
 
     movement_list = ['平板支撐', '臀推', '深蹲', '傳統硬舉', '羅馬尼亞硬舉', '臥推', '引體向上', '肩推']
-    recommend_video_prompt = """你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--%s，你會建議我這些動作裡的哪些%s？請回我一個格式一樣的 list of string""" % (error, ' '.join(movement_list))
+    recommend_video_prompt = """你是一個健身教練，這是我在做一組訓練時發生的錯誤 -- %s。你會建議我針對哪幾種動作進行優化或自主練習？請從這份清單中挑選: %s。請回覆我一個格式如下的 list of strings: ["動作A", "動作B"]。請只回覆該串列資料即可，不要有其他描述言論。""" % (error_context, ', '.join(movement_list))
+
+    openai_client = OpenAIClient()
     times = 0
+    result = []
+    
     while True:
-        result = []
         try:
-            videos = api_func.get_openai_response(recommend_video_prompt)
-            print(videos)
-            # 用正則抓中括號內部的資料
-            match = re.search(r'\[.*\]', videos, re.DOTALL)
-            list_text = match.group(0)
-            # 用 ast.literal_eval 將字串轉為真正的 list of dict
-            video_list = ast.literal_eval(list_text)
-            for text in video_list:
-                if text in movement_list:
-                    video = movement[text][0]
-                    video["video_id"] = video['url'].split("v=")[-1]
-                    result.append(video)
+            ai_response = openai_client.get_response(recommend_video_prompt)
+            # 使用正則抓取中括號內容
+            match = re.search(r'\[.*\]', ai_response, re.DOTALL)
+            if not match:
+                raise ValueError("AI response does not contain a list")
+            
+            # 使用 ast.literal_eval 將字串轉為真正的 list
+            selected_movements = ast.literal_eval(match.group(0))
+            
+            for movement_name in selected_movements:
+                # 從資料庫中尋找對應的 RecommendedVideo
+                videos = RecommendedVideo.objects.filter(target_error=movement_name)
+                for v in videos:
+                    # 建立關聯 (透過 through model)
+                    recording.recommended_videos.add(v)
+                    result.append({
+                        "title": v.title,
+                        "url": v.video_url,
+                        "video_id": v.video_url.split("v=")[-1],
+                        "target_error": v.target_error
+                    })
             break
-        except:
+        except Exception as e:
+            print(f"[read_video_list] AI parsing error (trial {times+1}): {e}")
             times += 1
             if times >= 5:
                 break
             continue
 
-    return {'result': result}
+    return JsonResponse({'result': result})

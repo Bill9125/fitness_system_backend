@@ -1,5 +1,6 @@
 from .base_processor import BaseProcessor
 from .processors.deadlift import DeadliftProcessor
+from .processors.benchpress import BenchpressProcessor
 
 class ProcessorFactory:
     """
@@ -11,8 +12,7 @@ class ProcessorFactory:
         
         if sport == 'deadlift':
             return DeadliftProcessor()
-        # Future extension:
-        # elif sport == 'squat':
-        #     return SquatProcessor()
+        elif sport == 'benchpress':
+            return BenchpressProcessor()
         
         raise ValueError(f"No processor found for sport: {sport}")

@@ -45,6 +45,13 @@ class BaseProcessor(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_result(self, video_path: str, recording=None):
+        """
+        Get the final result.
+        """
+        pass
+
     def run(self, video_path: str):
         """
         Main execution pipeline.
@@ -86,7 +93,6 @@ class BaseProcessor(ABC):
                         'bar_file': bar_file if i == 0 else None,
                         'skeleton_files': skeleton_files
                     }
-                    
                     # Delegate specific logic to subclass
                     processed_frame, frame_result = self.process_frame(context)
                     
@@ -118,14 +124,19 @@ class BaseProcessor(ABC):
     def _open_captures(self, video_path: str) -> List[cv2.VideoCapture]:
         caps = []
         # Support up to 3 views currently
-        for i in range(3):
-            mp4 = f'{video_path}/vision{i+1}.mp4'
-            avi = f'{video_path}/vision{i+1}.avi'
+        views = ['bar', 'left-front', 'left-back']  # default
+        if 'deadlift' in video_path:
+            views = ['bar', 'left-front', 'left-back']
+        elif 'benchpress' in video_path:
+            views = ['bar', 'rear', 'top']
+        for v in views:
+            mp4 = f'{video_path}/vision_{v}.mp4'
+            avi = f'{video_path}/vision_{v}.avi'
             path = mp4 if os.path.exists(mp4) else avi
             
             cap = cv2.VideoCapture(path)
             if not cap.isOpened():
-                print(f"[Warning] Failed to open camera {i+1}")
+                print(f"[Warning] Failed to open camera {v}")
                 caps.append(None)
             else:
                 caps.append(cap)
@@ -154,10 +165,15 @@ class BaseProcessor(ABC):
 
         # 用 ffmpeg 重新編碼成 H.264 + faststart（瀏覽器才能串流播放）
         if video_path:
+            views = ['bar', 'left-front', 'left-back']  # default
+            if 'deadlift' in video_path:
+                views = ['bar', 'left-front', 'left-back']
+            elif 'benchpress' in video_path:
+                views = ['bar', 'rear', 'top']
             import subprocess
-            for i in range(len(outs)):
-                raw_path = os.path.join(video_path, f'vision{i+1}_drawed.mp4')
-                tmp_path = os.path.join(video_path, f'vision{i+1}_drawed.tmp.mp4')
+            for v in views:
+                raw_path = os.path.join(video_path, f'vision_{v}_drawed.mp4')
+                tmp_path = os.path.join(video_path, f'vision_{v}_drawed.tmp.mp4')
                 if os.path.exists(raw_path):
                     cmd = [
                         'ffmpeg', '-y', '-i', raw_path,
@@ -169,6 +185,6 @@ class BaseProcessor(ABC):
                     result = subprocess.run(cmd, capture_output=True)
                     if result.returncode == 0:
                         os.replace(tmp_path, raw_path)
-                        print(f'[BaseProcessor] Re-encoded vision{i+1}_drawed.mp4 to H.264.')
+                        print(f'[BaseProcessor] Re-encoded vision_{v}_drawed.mp4 to H.264.')
                     else:
-                        print(f'[BaseProcessor] ffmpeg failed for vision{i+1}_drawed.mp4: {result.stderr.decode()[-200:]}')
+                        print(f'[BaseProcessor] ffmpeg failed for vision_{v}_drawed.mp4: {result.stderr.decode()[-200:]}')

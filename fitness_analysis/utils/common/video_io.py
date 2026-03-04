@@ -17,10 +17,16 @@ def rc_prep(video_path: str):
     
     # 1. Prepare Video Writers
     outs = []
+    views = ['bar', 'left-front', 'left-back']  # default
+    if 'deadlift' in video_path:
+        views = ['bar', 'left-front', 'left-back']
+    elif 'benchpress' in video_path:
+        views = ['bar', 'rear', 'top']
+        
     # We assume 3 views as per the original code logic
-    for i in range(3):
-        input_path_mp4 = f'{video_path}/vision{i+1}.mp4'
-        input_path_avi = f'{video_path}/vision{i+1}.avi'
+    for view in views:
+        input_path_mp4 = f'{video_path}/vision_{view}.mp4'
+        input_path_avi = f'{video_path}/vision_{view}.avi'
         
         cap = None
         if os.path.exists(input_path_mp4):
@@ -33,15 +39,15 @@ def rc_prep(video_path: str):
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS)
             
-            # Using XVID codec for AVI as typical for OpenCV
+            # Using mp4v codec for mp4
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            out_path = f'{video_path}/vision{i+1}_drawed.mp4'
+            out_path = f'{video_path}/vision_{view}_drawed.mp4'
             
             out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
             outs.append(out)
             cap.release()
         else:
-            print(f"Warning: Could not open input video for vision{i+1} to initialize writer.")
+            print(f"Warning: Could not open input video for vision_{view} to initialize writer.")
             outs.append(None)
 
     # 2. Prepare Data Files
@@ -51,8 +57,10 @@ def rc_prep(video_path: str):
     
     # Skeleton data files for each view
     skeleton_files = []
-    visions = ['bar', 'left-front', 'left-back']
-    for v in visions:
+    for v in views:
+        if v == 'bar' and 'benchpress' in video_path:
+            skeleton_files.append(None)
+            continue
         sk_path = f'{video_path}/skeleton_{v}.txt'
         f = open(sk_path, 'w')
         skeleton_files.append(f)

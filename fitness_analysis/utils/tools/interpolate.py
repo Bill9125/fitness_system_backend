@@ -84,8 +84,6 @@ def interpolate_missing_detections(yolo_data):
     interpolated_data = np.column_stack((all_frames, padded_features[0], padded_features[1], padded_features[2], padded_features[3]))
     return interpolated_data
 
-
-
 def interpolate_mediapipe(yolo_frames, mediapipe_data, landmarks):
     interpolated_data = []
     # original_data = []
@@ -141,7 +139,10 @@ def run_interpolation(dir):
     np.savetxt(bar_interpolated_path, interpolated_bar_data, delimiter=',', fmt='%d,%.8f,%.8f,%.8f,%.8f')
 
     print("BAR 'no detection' frames have been interpolated and saved to 'coordinates_interpolated.txt'.")
-    visions = ['bar', 'left-front', 'left-back']
+    if 'deadlift' in dir:
+        visions = ['bar', 'left-front', 'left-back']
+    elif 'benchpress' in dir:
+        visions = ['rear', 'top']
 
     # 設定要處理的文件
     for v in visions:

@@ -3,7 +3,6 @@ import os
 import argparse
 import json
 
-
 # 函式：讀取骨架數據的 txt 檔案
 def read_skeleton_data(filename):
     data = {}
@@ -14,7 +13,6 @@ def read_skeleton_data(filename):
                 data[frame] = {}
             data[frame][joint] = (x, y)
     return data
-
 
 # 函式：計算角度與長度
 def calculate_angles_and_length(data):
@@ -36,7 +34,6 @@ def calculate_angles_and_length(data):
 
     return frames, left_knee_angles, left_hip_angles, body_lengths
 
-
 # 函式：計算角度
 def calculate_angle(p1, p2, p3):
     a, b, c = np.array(p1), np.array(p2), np.array(p3)
@@ -52,11 +49,9 @@ def calculate_angle(p1, p2, p3):
     cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
     return np.degrees(np.arccos(cosine_angle))
 
-
 # 函式：計算距離
 def calculate_distance(p1, p2):
     return np.linalg.norm(np.array(p1) - np.array(p2))
-
 
 # 函式：讀取槓端數據
 def read_barbell_positions(filename):
@@ -68,7 +63,6 @@ def read_barbell_positions(filename):
             x_coords.append(x)
             y_coords.append(y)
     return frames, x_coords, y_coords
-
 
 def save_to_config(title, y_label, y_data, output_file, skeleton_frames):
     # 确保数据长度一致
@@ -104,7 +98,6 @@ def save_to_config(title, y_label, y_data, output_file, skeleton_frames):
         json.dump(config_data, f, indent=4)
 
     print(f"✅ 数据已存入 {config_path}")
-
 
 def run_data_produce(dir):
     skeleton_file_path = os.path.join(dir,

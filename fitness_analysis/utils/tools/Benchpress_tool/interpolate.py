@@ -141,7 +141,7 @@ def run_interpolation(dir):
     np.savetxt(bar_interpolated_path, interpolated_bar_data, delimiter=',', fmt='%d,%.8f,%.8f,%.8f,%.8f')
 
     print("BAR 'no detection' frames have been interpolated and saved to 'coordinates_interpolated.txt'.")
-    visions = ['top', 'rear']
+    visions = ['rear', 'top']
 
     # 設定要處理的文件
     for vision in visions:

@@ -5,10 +5,10 @@ import torch
 
 def bar_frame(frame,
                 bar_model,
-                bone_model,
-                skeleton_connections,
                 bar_file, 
-                frame_count_for_detect):
+                frame_count_for_detect,
+                skeleton_connections=None,
+                bone_model=None):
     """
     Process a single frame for bar detection and pose estimation (Lateral View).
     """

@@ -2,9 +2,6 @@
 import os, sys, re, json, math, ast                                                                         # 基本匯入
 import numpy as np                                                                                           # 向量/角度計算
 
-# === 既定骨架檔名（固定） ===
-SKE_TXT_NAME = "yolo_skeleton_top_11m_interpolated_hampel.txt"                                               # 骨架txt檔名
-
 # === 點位索引：0左肩,1右肩,2左髖,3右髖,4左肘,5右肘,6左腕,7右腕 ===
 L_SHO, R_SHO, L_HIP, R_HIP, L_ELB, R_ELB = 0, 1, 2, 3, 4, 5                                                  # 索引簡寫
 
@@ -58,59 +55,67 @@ def compute_angles(frames, kps_all):                                            
     return left_vals, right_vals                                                                              # 回傳
 
 def dump_angle_json(out_path, title, frames, values):                                                         # 輸出JSON
-    reals = [v for v in values if v is not None]                                                              # 實值列表
-    y_min = float(np.min(reals)) if reals else None                                                           # y最小
-    y_max = float(np.max(reals)) if reals else None                                                           # y最大
+    # values can be [v1, v2...] or [[L1, R1], [L2, R2]...]
+    # Flatten everything to find real min/max
+    all_reals = []
+    for v in values:
+        if isinstance(v, (list, tuple)):
+            all_reals.extend([x for x in v if x is not None and not (isinstance(x, float) and np.isnan(x))])
+        elif v is not None and not (isinstance(v, float) and np.isnan(v)):
+            all_reals.append(v)
+
+    y_min = float(np.min(all_reals)) if all_reals else 0.0                                                           # y最小
+    y_max = float(np.max(all_reals)) if all_reals else 180.0                                                           # y最大
+    
+    # Ensure values is a list (if it was a zip/iterator) and contents are lists (not tuples)
+    processed_values = []
+    for v in values:
+        if isinstance(v, (list, tuple, np.ndarray)):
+            processed_values.append(list(v))
+        else:
+            processed_values.append(v)
+
     payload = {                                                                                               # 組物件
         "title": title,                                                                                       # 標題
         "y_label": "Angle (degrees)",                                                                         # Y標籤
         "y_min": y_min,                                                                                       # y_min
         "y_max": y_max,                                                                                       # y_max
-        "frames": frames,                                                                                     # 幀序列
-        "values": values                                                                                      # 角度序列
+        "frames": [int(f) for f in frames],                                                                                     # 幀序列
+        "values": processed_values                                                                                      # 角度序列
     }
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:                                                          # 開檔
-        json.dump(payload, f, ensure_ascii=False, indent=4)                                                   # 寫檔
+        json.dump(payload, f, ensure_ascii=False, indent=4) 
+    return payload
 
-def main(folder_path):                                                                                        # 主流程
-    if not os.path.isdir(folder_path):                                                                        # 資料夾檢查
-        raise NotADirectoryError(f"不是有效資料夾：{folder_path}")                                              # 拋錯
-    txt_path = os.path.join(folder_path, SKE_TXT_NAME)                                                        # 組骨架路徑
-    if not os.path.exists(txt_path):                                                                          # 檔案檢查
-        raise FileNotFoundError(f"找不到骨架txt：{txt_path}")                                                   # 拋錯
+def run_torsor_angle_produce(folder_path, skeleton_dict=None):                                         # 拋錯
+    if skeleton_dict is not None and isinstance(skeleton_dict, dict) and len(skeleton_dict) > 0:
+        # Use provided dict from memory
+        frames = sorted(skeleton_dict.keys())
+        kps_all = []
+        for f in frames:
+            raw_coords = skeleton_dict[f]
+            # Chunking [x1, y1, x2, y2...] into [(x1,y1), (x2, y2)...]
+            kp_list = []
+            for i in range(0, len(raw_coords), 2):
+                kp_list.append((raw_coords[i], raw_coords[i+1]))
+            kps_all.append(kp_list)
+    else:
+        # Fallback to reading from file
+        txt_path = os.path.join(folder_path, "interpolated_skeleton_top_hampel.txt")
+        if not os.path.exists(txt_path):                                                                          # 檔案檢查
+            # We also check the non-hampel one as fallback if needed, but hampel is expected
+            raise FileNotFoundError(f"找不到骨架txt：{txt_path}")                                                   # 拋錯
+        frames, kps_all = parse_skeleton_txt(txt_path)                                                            # 讀取解析
 
-    frames, kps_all = parse_skeleton_txt(txt_path)                                                            # 讀取解析
     if not frames:                                                                                            # 無資料
-        raise ValueError("骨架txt沒有可解析的 Frame 資料")                                                       # 拋錯
+        raise ValueError("沒有可解析的 Frame 資料")                                                       # 拋錯
 
     left_vals, right_vals = compute_angles(frames, kps_all)                                                   # 計算角度
 
-    out_left  = os.path.join(folder_path, "left_elbow_torsor_angle_top.json")                                  # 左JSON路徑
-    out_right = os.path.join(folder_path, "right_elbow_torsor_angle_top.json")                                 # 右JSON路徑
-    dump_angle_json(out_left,  "Left Elbow–Trunk Angle (4-0-2)",  frames, left_vals)                          # 寫左JSON
-    dump_angle_json(out_right, "Right Elbow–Trunk Angle (5-1-3)", frames, right_vals)                         # 寫右JSON
+    out_torsor = os.path.join(folder_path, "config", "Torsor_Angle.json")
+    # Using list() to consume zip and convert tuples to lists for JSON
+    combined_values = [list(pair) for pair in zip(left_vals, right_vals)]
+    payload = dump_angle_json(out_torsor, "Elbow–Trunk Angle (L, R)", frames, combined_values)
 
-    print("✅ 完成！")                                                                                          # 提示
-    print(f"➡️ 左手角度 JSON：{out_left}")                                                                     # 顯示路徑
-    print(f"➡️ 右手角度 JSON：{out_right}")                                                                    # 顯示路徑
-
-# if __name__ == "__main__":                                                                                    # 進入點
-#     folder = sys.argv[1] if len(sys.argv) > 1 else "."                                                        # 取資料夾參數
-#     main(folder)                                                                                               # 執行
-
-if __name__ == "__main__":                                                                                   # 進入點
-    recordings_dir = r"C:/Users/92A27/benchpress/recordings"                                                 # 預設 recordings 根目錄
-    if len(sys.argv) >= 2:                                                                                   # 有傳入資料夾參數
-        base_path = sys.argv[1]                                                                              # 取第一個參數
-        if not os.path.isdir(base_path):                                                                     # 檢查有效性
-            raise FileNotFoundError(f"❌ 指定的資料夾不存在：{base_path}")                                     # 拋錯
-    else:                                                                                                     # 無參數 → 退回找最新
-        if not os.path.isdir(recordings_dir):                                                                 # recordings 根目錄要存在
-            raise FileNotFoundError(f"❌ recordings 根目錄不存在：{recordings_dir}")                           # 拋錯
-        subs = [os.path.join(recordings_dir, d) for d in os.listdir(recordings_dir)
-                if os.path.isdir(os.path.join(recordings_dir, d))]                                           # 列出所有子資料夾
-        if not subs:                                                                                          # 無任何子資料夾
-            raise FileNotFoundError("❌ recordings 資料夾下沒有任何子資料夾，且未提供參數")                      # 拋錯
-        base_path = max(subs, key=os.path.getmtime)                                                           # 取最新子資料夾
-    print(f"▶ 處理資料夾：{base_path}")                                                                        # 顯示此次實際處理路徑
-    main(base_path)                                                                                           # 執行主流程
+    print(f"✅ 完成！已儲存於：{out_torsor}")

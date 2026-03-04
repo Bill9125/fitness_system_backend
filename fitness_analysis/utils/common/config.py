@@ -1,6 +1,6 @@
 # Skeleton connections for pose estimation drawing
 # Format: (start_index, end_index)
-SKELETON_CONNECTIONS = [
+DEADLIFT_SKELETON_CONNECTIONS = [
     (0, 1),
     (0, 2),
     (2, 4),
@@ -16,3 +16,6 @@ SKELETON_CONNECTIONS = [
     (11, 13),
     (13, 15)  # Left leg
 ]
+
+BENCHPRESS_TOP_SKELETON_CONNECTIONS = [(0,1),(0,2),(1,3),(2,3),(4,6),(5,7),(0,4),(1,5)]
+BENCHPRESS_REAR_SKELETON_CONNECTIONS = [(0,1),(0,2),(2,4),(1,3),(3,5)]
