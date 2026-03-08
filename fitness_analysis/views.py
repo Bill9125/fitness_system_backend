@@ -8,16 +8,23 @@ from .models import Recording, Repetition, RecommendedVideo, RecordingRecommenda
 from .utils import ProcessorFactory, OpenAIClient
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.conf import settings
+from datetime import datetime
+import shutil
 
 @extend_schema(
     summary="取得使用者的所有 Recording ID",
     responses={200: dict}
 )
 @api_view(['GET'])
-def get_user_recording_ids(request, user_id: int):
+@permission_classes([IsAuthenticated])
+def get_user_recording_ids(request):
     # 直接回傳 list 格式，讓前端方便處理
+    user_id = request.user.id
     recordings = Recording.objects.filter(user=user_id)
     result = [
         {
@@ -28,7 +35,66 @@ def get_user_recording_ids(request, user_id: int):
         for r in recordings
     ]
     return JsonResponse(result, safe=False)
+
+@extend_schema(
+    summary="上傳訓練影片",
+    description="上傳一或多部影片建立新的 Recording 實體。請以表單(form-data)格式傳送，支援的 key 包含: 'bar_video', 'left_front_video', 'left_back_video' (針對硬舉) 或 'bar_video', 'rear_video', 'top_video' (針對臥推)，以及字串 'sport' (如 'benchpress' 或 'deadlift')。",
+    request=OpenApiTypes.OBJECT,
+    responses={200: dict}
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_video(request):
+    user = request.user
+    sport = request.data.get('sport', 'unknown_sport')
     
+    # 建立目錄結構 (格式: recordings/sport_name/recording_YYYYMMDD_HHMMSS/)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    folder_name = f"recordings/{sport}/recording_{timestamp}"
+    folder_path = os.path.join(settings.BASE_DIR, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
+    
+    # 解析檔案
+    # 允許的前端上傳欄位與後端需要的檔名對應
+    # Ex: frontend sends 'bar_video' -> save as 'vision_bar.mp4'
+    file_mapping = {
+        'bar_video': 'vision_bar.mp4',
+        'left_front_video': 'vision_left-front.mp4',
+        'left_back_video': 'vision_left-back.mp4',
+        'rear_video': 'vision_rear.mp4',
+        'top_video': 'vision_top.mp4',
+    }
+    
+    uploaded_count = 0
+    for file_key, target_name in file_mapping.items():
+        uploaded_file = request.FILES.get(file_key)
+        if uploaded_file:
+            file_path = os.path.join(folder_path, target_name)
+            with open(file_path, 'wb+') as dest:
+                for chunk in uploaded_file.chunks():
+                    dest.write(chunk)
+            uploaded_count += 1
+            
+    if uploaded_count == 0:
+        # 如果其實什麼檔案都沒上傳，也可以決定把資料夾刪掉並回傳 Error
+        shutil.rmtree(folder_path, ignore_errors=True)
+        return JsonResponse({"error": "No valid video files uploaded."}, status=400)
+        
+    # 建立 Recording 到資料庫並綁定當前登入者
+    recording = Recording.objects.create(
+        user=user,
+        sport=sport,
+        folder=folder_name,
+    )
+    
+    return JsonResponse({
+        "message": "Videos uploaded successfully",
+        "recording_id": recording.id,
+        "folder": folder_name,
+        "sport": sport,
+        "uploaded_files_count": uploaded_count
+    })
 
 @extend_schema(
     summary="取得動作偵測結果（含分數、角度、分段資訊），如果已經有predict過的會直接回傳，不會再重新predict",
@@ -38,6 +104,7 @@ def get_user_recording_ids(request, user_id: int):
     responses={200: dict}
 )
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_detection_result(request, recording_id: int):
     try:
         recording = Recording.objects.get(id=recording_id)
@@ -47,7 +114,7 @@ def get_detection_result(request, recording_id: int):
     folder = recording.folder
     sport_type = recording.sport
     processor = ProcessorFactory.get_processor(sport_type)
-    if not repetitions.exists():
+    if repetitions.exists():
         start_time = time.time()
         processor.run(folder)
         end_time = time.time()
@@ -57,24 +124,6 @@ def get_detection_result(request, recording_id: int):
         return JsonResponse({"error": "Config files not found"}, status=404)
     return JsonResponse(result) 
 
-# 合併進 get_detection_result 裡面
-# def get_graph(request, item_id: int):
-#     try:
-#         recording = Recording.objects.get(id=item_id)
-#     except Recording.DoesNotExist:
-#         raise Http404("Recording not found")
-    
-#     folder = recording.folder
-#     file_names = ['Bar_Position', 'Hip_Angle', 'Knee_Angle', 'Knee_to_Hip']
-#     result = []
-#     for file_name in file_names:
-#         json_path = os.path.join(folder, f"config/{file_name}.json")
-#         if os.path.exists(json_path):
-#             with open(json_path, mode='r', encoding='utf-8') as json_file:
-#                 data = json.load(json_file)
-#             result.append(data)
-#     return JsonResponse({'result': result})
-
 @extend_schema(
     summary="取得影片",
     parameters=[
@@ -83,10 +132,13 @@ def get_detection_result(request, recording_id: int):
     ],
     responses={200: dict}
 )
-async def get_videos(request, recording_id: int, vision: str):
-    # 注意：async view 不能用 @api_view（DRF 不支援），直接用 Django 原生 async view
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_videos(request, recording_id: int, vision: str):
+    # 這裡的 get_videos 不能用 async def 若用了 api_view 裝飾器。先移除 async 標籤或改回原版方式限制，但 DRF 逐漸支援 async。
+    # 簡化為 def:
     try:
-        recording = await Recording.objects.aget(id=recording_id)
+        recording = Recording.objects.get(id=recording_id)
     except Recording.DoesNotExist:
         raise Http404("Recording not found")
 
@@ -98,10 +150,46 @@ async def get_videos(request, recording_id: int, vision: str):
 
     print(f"[get_videos] Looking for: {mp4_path}, exists: {os.path.exists(mp4_path)}")
 
-    if os.path.exists(mp4_path):
-        return FileResponse(open(mp4_path, 'rb'), content_type="video/mp4")
+    if not os.path.exists(mp4_path):
+        return JsonResponse({"error": f"Video not found: {mp4_path}"}, status=404)
 
-    return JsonResponse({"error": f"Video not found: {mp4_path}"}, status=404)
+    file_size = os.path.getsize(mp4_path)
+    range_header = request.headers.get('Range', None)
+
+    if range_header:
+        # 解析 Range: bytes=0-1024
+        match = re.search(r'bytes=(\d+)-(\d+)?', range_header)
+        if match:
+            start = int(match.group(1))
+            end = match.group(2)
+            end = int(end) if end else file_size - 1
+
+            if start >= file_size:
+                return JsonResponse({"error": "Range Not Satisfiable"}, status=416)
+
+            chunk_size = (end - start) + 1
+            
+            # 使用 FileResponse 處理範圍讀取，Django 內建已支援傳入特定範圍，
+            # 但我們需要手動設定 206 狀態碼與相關 Header。
+            # 注意：FileResponse 在接收一個檔案管線時，通常會根據 Range Header 自行處理，
+            # 但在這裡我們手動指定更保險。
+            file = open(mp4_path, 'rb')
+            file.seek(start)
+            
+            # 這裡我們使用 StreamingHttpResponse 或直接手動操作
+            # 最精簡方式：利用 FileResponse 並修改部分屬性
+            response = FileResponse(file, content_type="video/mp4")
+            response.status_code = 206
+            response['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+            response['Content-Length'] = str(chunk_size)
+            response['Accept-Ranges'] = 'bytes'
+            return response
+
+    # 如果沒有 Range Header，回傳整個檔案
+    response = FileResponse(open(mp4_path, 'rb'), content_type="video/mp4")
+    response['Accept-Ranges'] = 'bytes'
+    response['Content-Length'] = str(file_size)
+    return response
 
 @extend_schema(
     summary="取得 AI 健身建議（串流形式）",
@@ -111,6 +199,7 @@ async def get_videos(request, recording_id: int, vision: str):
     responses={200: str}
 )
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_suggestion(request, recording_id: int):
     try:
         recording = Recording.objects.get(id=recording_id)
@@ -153,6 +242,7 @@ def get_suggestion(request, recording_id: int):
     responses={200: str}
 )
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_workout_plan(request, recording_id: int):
     try:
         recording = Recording.objects.get(id=recording_id)
@@ -195,6 +285,7 @@ def get_workout_plan(request, recording_id: int):
     responses={200: str}
 )
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def read_video_list(request, recording_id: int):
     try:
         recording = Recording.objects.get(id=recording_id)

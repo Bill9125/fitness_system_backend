@@ -893,7 +893,7 @@ def merge_skeleton_and_bar(df_skeleton, df_bar):
     df_merged = pd.merge(df_skeleton, df_bar, on="Frame", how="left")
     return df_merged
 
-def analyze_elbow_motion(input_file, input_file_bar, output_plot, output_excel, output_txt, base_path):
+def analyze_elbow_motion(input_file, output_txt, base_path):
     df = parse_frame_data(input_file)
 
     # 若有 bar 資料則合併
@@ -1049,12 +1049,7 @@ if __name__ == "__main__":                                                      
 
     # --- 路徑組裝統一用 os.path.join，避免手動加斜線帶來的錯誤 ---                                                     # 說明
     input_file = os.path.join(base_path, "yolo_skeleton_interpolated_hampel.txt")                                   # 骨架檔
-    input_file_bar = os.path.join(base_path, "yolo_coordinates_interpolated_hampel.txt")                            # 槓端檔
-    output_plot = os.path.join(base_path, "elbow_shoulder_angles_plot.png")                                         # 輸出圖
-    output_excel = os.path.join(base_path, "peak_analysis.xlsx")                                                     # 輸出 Excel
-    output_txt = os.path.join(base_path, "elbow_shoulder_angles_cut.txt")                                           # 切段結果
-    video_file = os.path.join(base_path, "original_vision3.avi")                                                    # 原始影片
-    merged_video = os.path.join(base_path, "merged_segments_with_labels.avi")                                       # 合成帶標籤影片
+    input_file_bar = os.path.join(base_path, "yolo_coordinates_interpolated_hampel.txt")                             # 合成帶標籤影片
 
     print(f"▶ 實際處理資料夾：{base_path}")                                                                            # 確認本次處理對象
 
@@ -1065,10 +1060,7 @@ if __name__ == "__main__":                                                      
 
     # 呼叫分析函式                                                                                                      # 註解
     result = analyze_elbow_motion(                                                                                  # 執行分析
-        input_file=input_file,                                                                                       # 傳入骨架檔
-        output_plot=output_plot,                                                                                     # 輸出圖路徑
-        output_excel=output_excel,                                                                                   # 輸出 Excel
-        output_txt=output_txt,                                                                                       # 輸出切段 txt
+        input_file=input_file,                                                                                  # 輸出切段 txt
         base_path=base_path,                                                                                         # 基底資料夾
         input_file_bar=input_file_bar                                                                               # 槓端檔路徑
     )                                                                                                                # 結束呼叫

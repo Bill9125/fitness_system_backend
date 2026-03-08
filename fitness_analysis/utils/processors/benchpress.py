@@ -22,9 +22,7 @@ from ..tools.Benchpress_tool.hampel import (
 )
 from ..tools.Benchpress_tool.torsor_angle_produce import run_torsor_angle_produce
 from ..tools.Benchpress_tool.autocutting import run_autocutting
-# from ..tools.Benchpress_tool.step5_calculate_angle_new_feature_test import run_calculate_angle_new_feature_test
-# from ..tools.Benchpress_tool.step6_cut import run_cut
-# from ..tools.Benchpress_tool.step7_length_100 import run_length_100
+from ..tools.Benchpress_tool.predict import run_predict
 
 class BenchpressProcessor(BaseProcessor):
     def __init__(self):
@@ -131,56 +129,45 @@ class BenchpressProcessor(BaseProcessor):
         run_step("Interpolation", run_interpolation, [video_path])
         run_step("Bar Data", run_bar_data_produce, [video_path], {"sport": 'benchpress'})
         bar_dict = run_step("Hampel Bar", run_hampel_bar, [video_path])
-        run_step("Hampel Rear", run_hampel_yolo_ske_rear, [video_path])
+        rear_ske_dict = run_step("Hampel Rear", run_hampel_yolo_ske_rear, [video_path])
         top_ske_dict = run_step("Hampel Top", run_hampel_yolo_ske_top, [video_path])
-        
         run_step("Angle Data", run_torsor_angle_produce, [video_path], {"skeleton_dict": top_ske_dict})
-        run_step("Autocutting", run_autocutting, [video_path], {"bar_dict": bar_dict, "top_ske_dict": top_ske_dict})
-        
-        # These are currently commented out in the original file, I'll keep them as placeholders if needed
-        # run_step("Data Split", run_data_split, [video_path])
-        # run_step("Trajectory Plot", plot_trajectory, [video_path])
-        # run_step("Prediction", run_predict, [video_path])
-
-# f'python ./tools/Benchpress_tool/offline_benchpress_head.py "{folder}"', 不需要
-# f'python ./tools/Benchpress_tool/interpolate.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step0_hampel_bar.py "{folder}"',
-# f'python ./tools/Benchpress_tool/bar_data_produce.py "{folder}" --out ./config --sport benchpress',
-# f'python ./tools/Benchpress_tool/step0_hampel_yolo_ske_rear.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step0_hampel_yolo_ske_top.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step1_interpolate_bar.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step2_interpolate_yolo_ske.py "{folder}"',
-# f'python ./tools/Benchpress_tool/torsor_angle_produce.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step3_autocutting_0801.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step5_calculate_angle_new_feature_test.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step6_cut.py "{folder}"', 不需要
-# f'python ./tools/Benchpress_tool/step7_length_100.py "{folder}"',
-# f'python ./tools/Benchpress_tool/step8_normalize.py "{folder}"',
+        split_info = run_step("Autocutting", run_autocutting, [video_path], {"bar_dict": bar_dict, "rear_ske_dict": rear_ske_dict})
+        run_step("Predicting", run_predict, [video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info])
 
     def get_result(self, folder: str, recording: 'Recording'):
         result = {}
         score_json_path = os.path.join(folder, "config/Score.json")
         bar_position_json_path = os.path.join(folder, "config/Bar_Position.json")
         split_info_json_path = os.path.join(folder, "config/Split_info.json")
+        torsor_angle_json_path = os.path.join(folder, "config/Torsor_Angle.json")
         
         if not os.path.exists(score_json_path):
             return None
         
         with open(score_json_path, mode='r', encoding='utf-8') as json_file:
-            score_data = json.load(json_file)['results']
+            score_data = json.load(json_file)
         with open(bar_position_json_path, mode='r', encoding='utf-8') as json_file:
             bar_position_data = json.load(json_file)
-        # with open(hip_angle_json_path, mode='r', encoding='utf-8') as json_file:
-        #     hip_angle_data = json.load(json_file)
-        # with open(knee_angle_json_path, mode='r', encoding='utf-8') as json_file:
-        #     knee_angle_data = json.load(json_file)
-        # with open(knee_to_hip_json_path, mode='r', encoding='utf-8') as json_file:
-        #     knee_to_hip_data = json.load(json_file)
         with open(split_info_json_path, mode='r', encoding='utf-8') as json_file:
             split_info_data = json.load(json_file)
+        with open(torsor_angle_json_path, mode='r', encoding='utf-8') as json_file:
+            torsor_angle_data = json.load(json_file)
         
         # Write to DB only if a Recording ORM object is provided
         if recording is not None:
+            import cv2
+            bar_vid_path = os.path.join(folder, "vision_bar.mp4")
+            if not os.path.exists(bar_vid_path):
+                bar_vid_path = os.path.join(folder, "vision_bar.avi")
+            
+            if os.path.exists(bar_vid_path):
+                cap = cv2.VideoCapture(bar_vid_path)
+                if cap.isOpened():
+                    recording.total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                    recording.save()
+                cap.release()
+
             from fitness_analysis.models import Repetition
             for key, val in split_info_data.items():
                 rep_score = score_data.get(key, {}).get("score", 0)
@@ -201,9 +188,7 @@ class BenchpressProcessor(BaseProcessor):
         result = {
             'score': score_data,
             'bar_position': bar_position_data,
-            # 'hip_angle': hip_angle_data,
-            # 'knee_angle': knee_angle_data,
-            # 'knee_to_hip': knee_to_hip_data,
+            'torsor_angle': torsor_angle_data,
             'split_info': split_info_data
         }
         return result
