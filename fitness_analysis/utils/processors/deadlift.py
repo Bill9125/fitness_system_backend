@@ -139,9 +139,9 @@ class DeadliftProcessor(BaseProcessor):
         # Write to DB only if a Recording ORM object is provided
         if recording is not None:
             import cv2
-            bar_vid_path = os.path.join(folder, "vision_bar.mp4")
+            bar_vid_path = os.path.join(video_path, "vision_bar.mp4")
             if not os.path.exists(bar_vid_path):
-                bar_vid_path = os.path.join(folder, "vision_bar.avi")
+                bar_vid_path = os.path.join(video_path, "vision_bar.avi")
             
             if os.path.exists(bar_vid_path):
                 cap = cv2.VideoCapture(bar_vid_path)

@@ -88,7 +88,7 @@ def dump_angle_json(out_path, title, frames, values):                           
         json.dump(payload, f, ensure_ascii=False, indent=4) 
     return payload
 
-def run_torsor_angle_produce(folder_path, skeleton_dict=None):                                         # 拋錯
+def run_torso_angle_produce(folder_path, skeleton_dict=None):                                         # 拋錯
     if skeleton_dict is not None and isinstance(skeleton_dict, dict) and len(skeleton_dict) > 0:
         # Use provided dict from memory
         frames = sorted(skeleton_dict.keys())
@@ -113,9 +113,9 @@ def run_torsor_angle_produce(folder_path, skeleton_dict=None):                  
 
     left_vals, right_vals = compute_angles(frames, kps_all)                                                   # 計算角度
 
-    out_torsor = os.path.join(folder_path, "config", "Torsor_Angle.json")
+    out_torso = os.path.join(folder_path, "config", "torso_Angle.json")
     # Using list() to consume zip and convert tuples to lists for JSON
     combined_values = [list(pair) for pair in zip(left_vals, right_vals)]
-    payload = dump_angle_json(out_torsor, "Elbow–Trunk Angle (L, R)", frames, combined_values)
+    payload = dump_angle_json(out_torso, "Elbow–Trunk Angle (L, R)", frames, combined_values)
 
-    print(f"✅ 完成！已儲存於：{out_torsor}")
+    print(f"✅ 完成！已儲存於：{out_torso}")

@@ -20,7 +20,7 @@ from ..tools.Benchpress_tool.hampel import (
     run_hampel_yolo_ske_rear,
     run_hampel_yolo_ske_top
 )
-from ..tools.Benchpress_tool.torsor_angle_produce import run_torsor_angle_produce
+from ..tools.Benchpress_tool.torso_angle_produce import run_torso_angle_produce
 from ..tools.Benchpress_tool.autocutting import run_autocutting
 from ..tools.Benchpress_tool.predict import run_predict
 
@@ -65,28 +65,6 @@ class BenchpressProcessor(BaseProcessor):
                 bar_file,
                 frame_cnt
             )
-            
-            # For Deadlift, bar data is also stored in specific format in b_list
-            # But BaseProcessor currently stores only ONE result object per frame per cam
-            # This is a small mismatch. The BaseProcessor naively stores "frame_result".
-            # We can merge sk_list and b_list strings, or handle bar writing inside bar_frame directly (which it seems to do partially?)
-            # Re-checking bar_frame: it RETURNS bar_data list.
-            
-            # To fit BaseProcessor storage, we can append bar data to the "result list" 
-            # OR we handle bar writing immediately here if we want to bypass storage.
-            # But `_cleanup_resources` writes from storage.
-            # Let's attach bar data as a special attribute? NO, `frame_data_storage` is simple.
-            
-            # HACK: The original code stored bar data in `bar_data` map and skeleton in `skeleton_data` map.
-            # BaseProcessor merges everything into one list of lines? 
-            # No, `BaseProcessor` has `skeleton_files[i].writelines(buffer)`.
-            # Bar file is written separately.
-            
-            # SOLUTION: We should write to bar_file lines immediately or store them.
-            # In `BaseProcessor`, `_cleanup_resources` only handles skeleton keys.
-            # Let's do a trick: Write bar data directly here if we have the file handle?
-            # Actually, `bar_frame` logic returns lines. We can just write them if file is open.
-            
             if bar_file and b_list:
                 bar_file.writelines(b_list)
                 
@@ -131,7 +109,7 @@ class BenchpressProcessor(BaseProcessor):
         bar_dict = run_step("Hampel Bar", run_hampel_bar, [video_path])
         rear_ske_dict = run_step("Hampel Rear", run_hampel_yolo_ske_rear, [video_path])
         top_ske_dict = run_step("Hampel Top", run_hampel_yolo_ske_top, [video_path])
-        run_step("Angle Data", run_torsor_angle_produce, [video_path], {"skeleton_dict": top_ske_dict})
+        run_step("Angle Data", run_torso_angle_produce, [video_path], {"skeleton_dict": top_ske_dict})
         split_info = run_step("Autocutting", run_autocutting, [video_path], {"bar_dict": bar_dict, "rear_ske_dict": rear_ske_dict})
         run_step("Predicting", run_predict, [video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info])
 
@@ -140,7 +118,7 @@ class BenchpressProcessor(BaseProcessor):
         score_json_path = os.path.join(folder, "config/Score.json")
         bar_position_json_path = os.path.join(folder, "config/Bar_Position.json")
         split_info_json_path = os.path.join(folder, "config/Split_info.json")
-        torsor_angle_json_path = os.path.join(folder, "config/Torsor_Angle.json")
+        torso_angle_json_path = os.path.join(folder, "config/Torso_Angle.json")
         
         if not os.path.exists(score_json_path):
             return None
@@ -151,8 +129,8 @@ class BenchpressProcessor(BaseProcessor):
             bar_position_data = json.load(json_file)
         with open(split_info_json_path, mode='r', encoding='utf-8') as json_file:
             split_info_data = json.load(json_file)
-        with open(torsor_angle_json_path, mode='r', encoding='utf-8') as json_file:
-            torsor_angle_data = json.load(json_file)
+        with open(torso_angle_json_path, mode='r', encoding='utf-8') as json_file:
+            torso_angle_data = json.load(json_file)
         
         # Write to DB only if a Recording ORM object is provided
         if recording is not None:
@@ -188,7 +166,7 @@ class BenchpressProcessor(BaseProcessor):
         result = {
             'score': score_data,
             'bar_position': bar_position_data,
-            'torsor_angle': torsor_angle_data,
+            'torso_angle': torso_angle_data,
             'split_info': split_info_data
         }
         return result

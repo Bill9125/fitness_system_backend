@@ -8,5 +8,5 @@ urlpatterns = [
     path('videos/<int:recording_id>/<str:vision>/', views.get_videos, name='get-videos'),
     path('suggestion/<int:recording_id>/', views.get_suggestion, name='get-suggestion'),
     path('workout_plan/<int:recording_id>/', views.get_workout_plan, name='get-workout-plan'),
-    path('recommendations/<int:recording_id>/', views.read_video_list, name='get-recommendations'),
+    path('recommendations/<int:recording_id>/', views.get_recommendations, name='get-recommendations'),
 ]

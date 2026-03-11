@@ -10,7 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.conf import settings
 from datetime import datetime
@@ -132,8 +132,8 @@ def get_detection_result(request, recording_id: int):
     ],
     responses={200: dict}
 )
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@api_view(['GET', 'HEAD', 'OPTIONS'])
+@permission_classes([AllowAny])
 def get_videos(request, recording_id: int, vision: str):
     # 這裡的 get_videos 不能用 async def 若用了 api_view 裝飾器。先移除 async 標籤或改回原版方式限制，但 DRF 逐漸支援 async。
     # 簡化為 def:
@@ -156,39 +156,50 @@ def get_videos(request, recording_id: int, vision: str):
     file_size = os.path.getsize(mp4_path)
     range_header = request.headers.get('Range', None)
 
+    import mimetypes
+    content_type, _ = mimetypes.guess_type(mp4_path)
+    if not content_type:
+        content_type = 'video/mp4'
+
     if range_header:
-        # 解析 Range: bytes=0-1024
         match = re.search(r'bytes=(\d+)-(\d+)?', range_header)
         if match:
             start = int(match.group(1))
-            end = match.group(2)
-            end = int(end) if end else file_size - 1
+            end_match = match.group(2)
+            end = int(end_match) if end_match else file_size - 1
 
             if start >= file_size:
                 return JsonResponse({"error": "Range Not Satisfiable"}, status=416)
 
             chunk_size = (end - start) + 1
-            
-            # 使用 FileResponse 處理範圍讀取，Django 內建已支援傳入特定範圍，
-            # 但我們需要手動設定 206 狀態碼與相關 Header。
-            # 注意：FileResponse 在接收一個檔案管線時，通常會根據 Range Header 自行處理，
-            # 但在這裡我們手動指定更保險。
+
+            # In Django, FileResponse naturally handles file seeking
             file = open(mp4_path, 'rb')
             file.seek(start)
             
-            # 這裡我們使用 StreamingHttpResponse 或直接手動操作
-            # 最精簡方式：利用 FileResponse 並修改部分屬性
-            response = FileResponse(file, content_type="video/mp4")
-            response.status_code = 206
+            # The custom iterator helps us read only `chunk_size` bytes
+            def file_iterator(file_obj, chunk, blk_size=8192):
+                remaining = chunk
+                while remaining > 0:
+                    read_size = min(blk_size, remaining)
+                    data = file_obj.read(read_size)
+                    if not data:
+                        break
+                    yield data
+                    remaining -= len(data)
+                file_obj.close()
+            
+            response = StreamingHttpResponse(file_iterator(file, chunk_size), status=206, content_type=content_type)
             response['Content-Range'] = f'bytes {start}-{end}/{file_size}'
             response['Content-Length'] = str(chunk_size)
             response['Accept-Ranges'] = 'bytes'
+            response['Cache-Control'] = 'no-cache'
             return response
 
-    # 如果沒有 Range Header，回傳整個檔案
-    response = FileResponse(open(mp4_path, 'rb'), content_type="video/mp4")
-    response['Accept-Ranges'] = 'bytes'
+    response = FileResponse(open(mp4_path, 'rb'), content_type=content_type)
     response['Content-Length'] = str(file_size)
+    response['Accept-Ranges'] = 'bytes'
+    response['Cache-Control'] = 'no-cache'
     return response
 
 @extend_schema(
@@ -286,7 +297,7 @@ def get_workout_plan(request, recording_id: int):
 )
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def read_video_list(request, recording_id: int):
+def get_recommendations(request, recording_id: int):
     try:
         recording = Recording.objects.get(id=recording_id)
     except Recording.DoesNotExist:
@@ -353,7 +364,7 @@ def read_video_list(request, recording_id: int):
                     })
             break
         except Exception as e:
-            print(f"[read_video_list] AI parsing error (trial {times+1}): {e}")
+            print(f"[get_recommendations] AI parsing error (trial {times+1}): {e}")
             times += 1
             if times >= 5:
                 break

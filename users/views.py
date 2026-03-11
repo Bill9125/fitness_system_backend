@@ -2,59 +2,80 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from .serializers import RegisterSerializer, UserSerializer
+from django.core.mail import send_mail
+from django.conf import settings
+import random
+
+from .models import EmailVerificationToken, UserProfile
+from .serializers import (
+    SendVerificationSerializer,
+    RegisterSerializer,
+    UserSerializer,
+    FillProfileSerializer
+)
+
+class SendVerificationEmailView(generics.CreateAPIView):
+    permission_classes = (AllowAny,)
+    serializer_class = SendVerificationSerializer
+
+    @extend_schema(summary="發送驗證碼信件", description="前端傳入 email，後端將產生 6 位數驗證碼寄出。")
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        # Generate OTP
+        code = str(random.randint(100000, 999999))
+        
+        # Save or update Token
+        EmailVerificationToken.objects.update_or_create(
+            email=email,
+            defaults={'code': code}
+        )
+
+        send_mail(
+            subject='[健身輔助系統] 您的註冊驗證碼',
+            message=f'您好，\n\n您的註冊驗證碼是 {code} 。\n此驗證碼將在 15 分鐘後失效，請盡快回到 APP 填寫。',
+            from_email=settings.DEFAULT_FROM_EMAIL if hasattr(settings, 'DEFAULT_FROM_EMAIL') else 'noreply@fitness.com',
+            recipient_list=[email],
+            fail_silently=False,
+        )
+
+        return Response({"message": "驗證碼已寄出"}, status=status.HTTP_200_OK)
+
 
 @extend_schema_view(
-    post=extend_schema(
-        summary="使用者註冊",
-        description="建立一個新帳號。會同時自動建立一個空的 UserProfile 供儲存身高、體重與性別資料。",
-        responses={201: UserSerializer}
-    )
+    post=extend_schema(summary="使用者註冊 (驗證碼)", description="前端傳入 email, password, code。驗證成功即建立帳戶。", responses={201: UserSerializer})
 )
 class RegisterView(generics.CreateAPIView):
-    queryset = UserSerializer.Meta.model.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        
+        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+
+
 @extend_schema_view(
-    get=extend_schema(
-        summary="取得個人資料",
-        description="回傳當前登入使用者的基本資料與 Profile (包含身高、體重、性別與生日)。需在 Header 帶入 JWT Token。",
-        responses={200: UserSerializer}
-    ),
-    put=extend_schema(
-        summary="完整更新個人資料",
-        description="覆蓋更新使用者的所有基本資料與 Profile 資料。需在 Header 帶入 JWT Token。",
-        responses={200: UserSerializer}
-    ),
-    patch=extend_schema(
-        summary="局部更新個人資料 (PATCH)",
-        description="只更新有傳送的特定使用者參數，不會覆寫未傳送的欄位。需在 Header 帶入 JWT Token。",
-        responses={200: UserSerializer}
-    )
+    get=extend_schema(summary="取得個人資料", description="回傳當前登入使用者的基本資料與 Profile (包含身高、體重、性別與生日)。"),
+    put=extend_schema(summary="填寫/更新個人資料", description="覆寫更新使用者的身體數據。需在 Header 帶入 JWT Token。"),
+    patch=extend_schema(summary="局部更新個人資料", description="部分更新使用者身體數據。需在 Header 帶入 JWT Token。")
 )
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = (IsAuthenticated,)
-    serializer_class = UserSerializer
+    serializer_class = FillProfileSerializer
 
     def get_object(self):
-        return self.request.user
+        # We ensure a profile exists when requesting logic hits here
+        # (Though signals create it automatically, this handles safe extraction for legacy users)
+        profile, created = UserProfile.objects.get_or_create(user=self.request.user)
+        return profile
 
-    def update(self, request, *args, **kwargs):
-        # Update user standard fields
-        user = self.get_object()
-        user_data = request.data
-        profile_data = user_data.pop('profile', None)
-
-        serializer = self.get_serializer(user, data=user_data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-
-        # Update profile fields if provided
-        if profile_data:
-            from .serializers import UserProfileSerializer
-            profile_serializer = UserProfileSerializer(user.profile, data=profile_data, partial=True)
-            profile_serializer.is_valid(raise_exception=True)
-            profile_serializer.save()
-
-        return Response(serializer.data)
+    def retrieve(self, request, *args, **kwargs):
+        # Since the user might want to see both `email` and their `profile` details in GET API
+        # but the Update uses FillProfileSerializer, we can override retrieve to show everything.
+        instance = request.user
+        return Response(UserSerializer(instance).data)

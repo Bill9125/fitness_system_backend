@@ -209,7 +209,7 @@ def extract_raw_features(video_path, bar_dict, rear_ske_dict, top_ske_dict):
     ]
     df = pd.DataFrame(features, columns=cols)
     
-    # Save Torsor_Angle.json requested by user
+    # Save torso_Angle.json requested by user
     frames = df["frame"].astype(int).tolist()
     values = []
     all_reals = []
@@ -225,7 +225,7 @@ def extract_raw_features(video_path, bar_dict, rear_ske_dict, top_ske_dict):
     y_max = float(np.max(all_reals)) if all_reals else 180.0
     
     payload = {
-        "title": "Torsor Angle",
+        "title": "torso Angle",
         "y_label": "Angle (L, R)",
         "y_min": y_min,
         "y_max": y_max,
@@ -235,7 +235,7 @@ def extract_raw_features(video_path, bar_dict, rear_ske_dict, top_ske_dict):
     
     config_dir = os.path.join(video_path, "config")
     os.makedirs(config_dir, exist_ok=True)
-    with open(os.path.join(config_dir, "Torsor_Angle.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(config_dir, "torso_Angle.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=4)
         
     return df
@@ -280,7 +280,7 @@ def run_predict(video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info):
         print(f"[Prediction] ⚠️ No weights found at {model_path}. Proceeding with random weights for testing.")
 
     feature_cols = df.columns[1:] # Exclude the 'frame' column (which is idx 0)
-    rep_results = {}
+    rep_results = {"results": {}}
 
     for seg_id, bounds in segments.items():
         start_f, end_f = bounds["start"], bounds["end"]
@@ -337,7 +337,7 @@ def run_predict(video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info):
         score_penalty = np.sum(p_np * 25.0) 
         final_score = float(max(0, 100.0 - score_penalty))
 
-        rep_results[seg_id] = {
+        rep_results["results"][seg_id] = {
             "Tilting_to_the_left": float(p_np[0]),
             "Tilting_to_the_right": float(p_np[1]),
             "Scapular_protraction": float(p_np[2]),

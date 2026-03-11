@@ -4,11 +4,11 @@ def run_bar_data_produce(dir, sport):
     # 讀取 yolo 檔案
     yolo_txt_path = os.path.join(
         dir, "coordinates_interpolated.txt")  # 你的 txt 檔案路徑
+    
+    output_json_path = os.path.join(dir, "config", "Bar_Position.json")  # 輸出的 JSON 檔案
     if sport == 'deadlift':
-        output_json_path = os.path.join(dir, "config", "Bar_Position.json")  # 輸出的 JSON 檔案
         idx = 1 # X 中心
     elif sport == 'benchpress':
-        output_json_path = os.path.join(dir, 'config', "Bar_Position.json")  # 輸出的 JSON 檔案
         idx = 2 # Y 中心
 
     # 初始化數據存儲
@@ -26,6 +26,8 @@ def run_bar_data_produce(dir, sport):
             center = float(parts[idx])  
 
             frames.append(frame_count)
+            if sport == 'benchpress':
+                center = 640 - center
             values.append(center)
 
     if values:

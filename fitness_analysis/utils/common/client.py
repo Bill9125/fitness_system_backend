@@ -45,6 +45,16 @@ class OpenAIClient:
         """移除 LLM 回應中的 markdown code fence"""
         return re.sub(r'^```(?:markdown)?\n([\s\S]+?)\n```$', r'\1', llm_output.strip())
 
+    @staticmethod
+    def _get_sport_name_zh(sport: str) -> str:
+        if not sport:
+            return "健身"
+        sport_map = {
+            'deadlift': '硬舉',
+            'benchpress': '臥推'
+        }
+        return sport_map.get(sport.lower(), sport.title())
+
     def get_suggestion(self, recording_id: int) -> dict:
         """根據 recording_id 讀取 Score.json，產生健身建議"""
         from django.conf import settings
@@ -64,9 +74,10 @@ class OpenAIClient:
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
 
+        sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
-            f"你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--{score_data}，"
-            "key為第幾組，value包含了4個錯誤動作的信心值以及這組的總分，"
+            f"你是一個健身教練，這是我在做一組{sport_name_zh}訓練時發生的錯誤--{score_data}，"
+            "key為第幾組，value包含了錯誤動作的信心值以及這組的總分，"
             "請根據這些資訊判斷(回答以信心值作為嚴重程度的標準，例如:可能、有一點、明顯等等，不要直接出現信心值)，"
             "越大表示該錯誤錯得越明顯，請問要怎麼修正他的動作，指出哪一下有問題。"
             "請用 markdown 語法回答，給我英文回答"
@@ -93,9 +104,10 @@ class OpenAIClient:
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
 
+        sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
-            f"你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--{score_data}，"
-            "key為第幾組，value包含了4個錯誤動作的信心值以及這組的總分，"
+            f"你是一個健身教練，這是我在做一組{sport_name_zh}訓練時發生的錯誤--{score_data}，"
+            "key為第幾組，value包含了錯誤動作的信心值以及這組的總分，"
             "請根據這些資訊判斷(回答以信心值作為嚴重程度的標準，例如:可能、有一點、明顯等等，不要直接出現信心值)，"
             "越大表示該錯誤錯得越明顯，請問要怎麼修正他的動作，指出哪一下有問題。"
             "請用 markdown 語法回答，給我英文回答"
@@ -124,13 +136,14 @@ class OpenAIClient:
 
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
+        sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
-                    f"你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--{score_data}，"
-                    "key為第幾組，value包含了4個錯誤動作的信心值以及這組的總分，"
-                    "請根據這些資訊判斷(回答以信心值作為嚴重程度的標準，例如:可能、有一點、明顯等等，不要直接出現信心值)，"
-                    "越大表示該錯誤錯得越明顯，請問要怎麼修正他的動作，指出哪一下有問題。"
-                    "請用 markdown 語法回答，給我英文回答"
-                )
+            f"你是一個健身教練，這是我在做一組{sport_name_zh}訓練時發生的錯誤--{score_data}，"
+            "key 為第幾組，value 包含了錯誤動作分類模型的信心值"
+            "(回答以信心值作為嚴重程度的標準，例如：可能、有一點、明顯等等，不要直接出現信心值)。"
+            "你會建議他怎麼「安排一週詳細的訓練菜單」，越清楚越好。"
+            "請用 markdown 語法回答，給我英文回答"
+        )
         
         result = self.get_response(prompt)
         return {'result': self.extract_markdown(result)}
@@ -154,9 +167,10 @@ class OpenAIClient:
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
 
+        sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
-            f"你是一個健身教練，這是我在做一組硬舉訓練時發生的錯誤--{score_data}，"
-            "key 為第幾組，value 包含了 4 個錯誤動作分類模型的信心值"
+            f"你是一個健身教練，這是我在做一組{sport_name_zh}訓練時發生的錯誤--{score_data}，"
+            "key 為第幾組，value 包含了錯誤動作分類模型的信心值"
             "(回答以信心值作為嚴重程度的標準，例如：可能、有一點、明顯等等，不要直接出現信心值)。"
             "你會建議他怎麼「安排一週詳細的訓練菜單」，越清楚越好。"
             "請用 markdown 語法回答，給我英文回答"
