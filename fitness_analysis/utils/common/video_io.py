@@ -44,6 +44,7 @@ def rc_prep(video_path: str):
             out_path = f'{video_path}/vision_{view}_drawed.mp4'
             
             out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+
             outs.append(out)
             cap.release()
         else:

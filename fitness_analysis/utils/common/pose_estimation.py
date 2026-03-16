@@ -8,7 +8,9 @@ def bar_frame(frame,
                 bar_file, 
                 frame_count_for_detect,
                 skeleton_connections=None,
-                bone_model=None):
+                bone_model=None,
+                draw=True):
+
     """
     Process a single frame for bar detection and pose estimation (Lateral View).
     """
@@ -16,10 +18,6 @@ def bar_frame(frame,
     results = bar_model(source=frame, imgsz=320, conf=0.5, verbose=False, device="cuda:0")
     boxes = results[0].boxes
     detected = False
-    
-    # Draw boxes
-    for result in results:
-        frame = result.plot()
     
     # Collect bar data
     bar_data_list = []
@@ -38,21 +36,26 @@ def bar_frame(frame,
     # 2. Pose Estimation (Bone Model)
     # Re-use common logic for bone frame
     if bone_model:
-        frame, skeleton_data_list = _process_bone_frame(frame, bone_model, skeleton_connections, frame_count_for_detect)
+        frame, skeleton_data_list = _process_bone_frame(frame, bone_model, skeleton_connections, frame_count_for_detect, draw=draw)
     else:
         skeleton_data_list = []
     return frame, skeleton_data_list, bar_data_list
 
+
 def bone_frame(frame,
                 model,
                 skeleton_connections,
-                frame_count_for_detect):
+                frame_count_for_detect,
+                draw=True):
+
     """
     Process a single frame for pose estimation only (Side Views).
     """
-    return _process_bone_frame(frame, model, skeleton_connections, frame_count_for_detect)
+    return _process_bone_frame(frame, model, skeleton_connections, frame_count_for_detect, draw=draw)
 
-def _process_bone_frame(frame, model, skeleton_connections, frame_count_for_detect):
+
+def _process_bone_frame(frame, model, skeleton_connections, frame_count_for_detect, draw=True):
+
     """
     Internal helper to run pose estimation and drawing.
     """
@@ -93,17 +96,20 @@ def _process_bone_frame(frame, model, skeleton_connections, frame_count_for_dete
                     kp_coords.append(None)
                 else:
                     kp_coords.append((x_kp, y_kp))
-                    cv2.circle(frame, (x_kp, y_kp), 5, (0, 255, 0), cv2.FILLED)
+                    if draw:
+                        cv2.circle(frame, (x_kp, y_kp), 5, (0, 255, 0), cv2.FILLED)
 
                 skeleton_data_list.append(f"{frame_count_for_detect},{idx},{x_kp},{y_kp}\n")
 
             # Draw connections
-            for start_idx, end_idx in skeleton_connections:
-                if start_idx < len(kp_coords) and end_idx < len(kp_coords):
-                    if kp_coords[start_idx] is None or kp_coords[end_idx] is None:
-                        continue
-                    cv2.line(frame, kp_coords[start_idx], kp_coords[end_idx],
-                            (0, 255, 255), 2)
+            if draw:
+                for start_idx, end_idx in skeleton_connections:
+                    if start_idx < len(kp_coords) and end_idx < len(kp_coords):
+                        if kp_coords[start_idx] is None or kp_coords[end_idx] is None:
+                            continue
+                        cv2.line(frame, kp_coords[start_idx], kp_coords[end_idx],
+                                (0, 255, 255), 2)
+
         else:
              skeleton_data_list.append(f"{frame_count_for_detect},no detection\n")
 

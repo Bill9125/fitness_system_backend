@@ -6,7 +6,7 @@ from django.core.mail import send_mail
 from django.conf import settings
 import random
 
-from .models import EmailVerificationToken, UserProfile
+from .models import EmailVerificationToken, UserProfile, default_expiration
 from .serializers import (
     SendVerificationSerializer,
     RegisterSerializer,
@@ -30,7 +30,10 @@ class SendVerificationEmailView(generics.CreateAPIView):
         # Save or update Token
         EmailVerificationToken.objects.update_or_create(
             email=email,
-            defaults={'code': code}
+            defaults={
+                'code': code,
+                'expires_at': default_expiration()
+            }
         )
 
         send_mail(

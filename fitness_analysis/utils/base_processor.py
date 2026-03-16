@@ -2,12 +2,10 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Any
 import os
 import time
-import torch
 import cv2
-import numpy as np
-from ultralytics import YOLO
 
 from .common import rc_prep
+from .tools.trajectory import plot_trajectory
 
 class BaseProcessor(ABC):
     """
@@ -112,14 +110,18 @@ class BaseProcessor(ABC):
                     break
                     
         finally:
-            self._cleanup_resources(caps, outs, bar_file, skeleton_files, frame_data_storage, video_path)
+            self._cleanup_resources(caps, outs, bar_file, skeleton_files, frame_data_storage)
             
         print('[BaseProcessor] Total run time:', time.time() - first_time)
         
-        # 4. Post Processing
-        self.post_process(video_path)
+        # 4. Post Processing & Final Re-encoding
+        try:
+            self.post_process(video_path)
+        finally:
+            self.reencode_videos(video_path)
         
         return "Success"
+
 
     def _open_captures(self, video_path: str) -> List[cv2.VideoCapture]:
         caps = []
@@ -142,7 +144,7 @@ class BaseProcessor(ABC):
                 caps.append(cap)
         return caps
 
-    def _cleanup_resources(self, caps, outs, bar_file, skeleton_files, data_storage, video_path=None):
+    def _cleanup_resources(self, caps, outs, bar_file, skeleton_files, data_storage):
         # Release Caps & Writers
         for cap in caps:
             if cap: cap.release()
@@ -163,28 +165,35 @@ class BaseProcessor(ABC):
         for f in skeleton_files:
             if f: f.close()
 
-        # 用 ffmpeg 重新編碼成 H.264 + faststart（瀏覽器才能串流播放）
-        if video_path:
-            views = ['bar', 'left-front', 'left-back']  # default
-            if 'deadlift' in video_path:
-                views = ['bar', 'left-front', 'left-back']
-            elif 'benchpress' in video_path:
-                views = ['bar', 'rear', 'top']
-            import subprocess
-            for v in views:
-                raw_path = os.path.join(video_path, f'vision_{v}_drawed.mp4')
-                tmp_path = os.path.join(video_path, f'vision_{v}_drawed.tmp.mp4')
-                if os.path.exists(raw_path):
-                    cmd = [
-                        'ffmpeg', '-y', '-i', raw_path,
-                        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                        '-movflags', '+faststart',
-                        '-c:a', 'aac',
-                        tmp_path
-                    ]
-                    result = subprocess.run(cmd, capture_output=True)
-                    if result.returncode == 0:
-                        os.replace(tmp_path, raw_path)
-                        print(f'[BaseProcessor] Re-encoded vision_{v}_drawed.mp4 to H.264.')
-                    else:
-                        print(f'[BaseProcessor] ffmpeg failed for vision_{v}_drawed.mp4: {result.stderr.decode()[-200:]}')
+    def reencode_videos(self, video_path: str):
+        """
+        Use ffmpeg to re-encode all DRAWED videos to H.264 + faststart (for browser streaming).
+        """
+        if not video_path:
+            return
+
+        views = ['bar', 'left-front', 'left-back']  # default
+        if 'deadlift' in video_path:
+            views = ['bar', 'left-front', 'left-back']
+        elif 'benchpress' in video_path:
+            views = ['bar', 'rear', 'top']
+            
+        import subprocess
+        for v in views:
+            raw_path = os.path.join(video_path, f'vision_{v}_drawed.mp4')
+            tmp_path = os.path.join(video_path, f'vision_{v}_drawed.tmp.mp4')
+            if os.path.exists(raw_path):
+                cmd = [
+                    'ffmpeg', '-y', '-i', raw_path,
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                    '-movflags', '+faststart',
+                    '-c:a', 'aac',
+                    tmp_path
+                ]
+                result = subprocess.run(cmd, capture_output=True)
+                if result.returncode == 0:
+                    os.replace(tmp_path, raw_path)
+                    print(f'[BaseProcessor] Re-encoded vision_{v}_drawed.mp4 back to H.264.')
+                else:
+                    print(f'[BaseProcessor] ffmpeg failed for vision_{v}_drawed.mp4: {result.stderr.decode()[-200:]}')
+

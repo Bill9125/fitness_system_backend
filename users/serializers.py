@@ -9,10 +9,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
+    username = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['id', 'email', 'username', 'profile']
+
+    def get_username(self, obj):
+        if hasattr(obj, 'profile') and obj.profile and obj.profile.nickname:
+            return obj.profile.nickname
+        return obj.email
 
 # API 1: Request OTP
 class SendVerificationSerializer(serializers.Serializer):
@@ -54,19 +60,11 @@ class RegisterSerializer(serializers.Serializer):
 
 # API 3: Fill Profile
 class FillProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', required=False)
+    username = serializers.CharField(source='nickname', required=False, allow_blank=True)
 
     class Meta:
         model = UserProfile
         fields = ['height', 'weight', 'gender', 'dob', 'username']
-
-    def update(self, instance, validated_data):
-        user_data = validated_data.pop('user', None)
-        if user_data and 'username' in user_data:
-            instance.user.username = user_data['username']
-            instance.user.save()
-            
-        return super().update(instance, validated_data)
 
 from rest_framework_simplejwt.tokens import RefreshToken
 

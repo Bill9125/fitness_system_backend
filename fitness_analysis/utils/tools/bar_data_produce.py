@@ -1,34 +1,28 @@
 import json, os
 
-def run_bar_data_produce(dir, sport):
+def run_bar_data_produce(dir, sport, results):
     # 讀取 yolo 檔案
     yolo_txt_path = os.path.join(
         dir, "coordinates_interpolated.txt")  # 你的 txt 檔案路徑
     
     output_json_path = os.path.join(dir, "config", "Bar_Position.json")  # 輸出的 JSON 檔案
     if sport == 'deadlift':
-        idx = 1 # X 中心
+        idx = 0 # X 中心 (in [x, y] list)
     elif sport == 'benchpress':
-        idx = 2 # Y 中心
+        idx = 1 # Y 中心 (in [x, y] list)
+
 
     # 初始化數據存儲
     frames = []
     values = []
 
     # 讀取 YOLO 偵測數據
-    with open(yolo_txt_path, "r") as file:
-        for line in file:
-            parts = line.strip().split(",")
-            if len(parts) < 3:  # 確保資料完整
-                continue
-
-            frame_count = int(parts[0])  # 幀數
-            center = float(parts[idx])  
-
-            frames.append(frame_count)
-            if sport == 'benchpress':
-                center = 640 - center
-            values.append(center)
+    for frame_count, parts in results.items():
+        center = float(parts[idx])  
+        frames.append(frame_count)
+        if sport == 'benchpress':
+            center = 640 - center
+        values.append(center)
 
     if values:
         x_min = min(values) * 0.9  # X 軸最小值，留 10% 緩衝
@@ -40,10 +34,10 @@ def run_bar_data_produce(dir, sport):
     data = {
         "title": "Barbell Center Positions",
         "y_label": "Position (pixels)",
-        "y_min": x_min,
-        "y_max": x_max,
+        "y_min": round(x_min, 2),
+        "y_max": round(x_max, 2),
         "frames": frames,
-        "values": values
+        "values": [round(v, 2) for v in values]
     }
 
     # 存成 JSON 檔案

@@ -208,35 +208,6 @@ def extract_raw_features(video_path, bar_dict, rear_ske_dict, top_ske_dict):
         "left_dist", "right_dist"
     ]
     df = pd.DataFrame(features, columns=cols)
-    
-    # Save torso_Angle.json requested by user
-    frames = df["frame"].astype(int).tolist()
-    values = []
-    all_reals = []
-    for row in df[["left_torso-arm", "right_torso-arm"]].values:
-        l_ang, r_ang = row
-        l_val = None if (l_ang is None or np.isnan(l_ang)) else float(l_ang)
-        r_val = None if (r_ang is None or np.isnan(r_ang)) else float(r_ang)
-        values.append([l_val, r_val])
-        if l_val is not None: all_reals.append(l_val)
-        if r_val is not None: all_reals.append(r_val)
-        
-    y_min = float(np.min(all_reals)) if all_reals else 0.0
-    y_max = float(np.max(all_reals)) if all_reals else 180.0
-    
-    payload = {
-        "title": "torso Angle",
-        "y_label": "Angle (L, R)",
-        "y_min": y_min,
-        "y_max": y_max,
-        "frames": frames,
-        "values": values
-    }
-    
-    config_dir = os.path.join(video_path, "config")
-    os.makedirs(config_dir, exist_ok=True)
-    with open(os.path.join(config_dir, "torso_Angle.json"), "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=4)
         
     return df
 
@@ -334,8 +305,8 @@ def run_predict(video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info):
         # User requested: "Each confidence value accounts for 25%. Output a final weighted score."
         # If the probability is predicting an ERROR, the "form score" decreases.
         # Assuming perfect form = 100:
-        score_penalty = np.sum(p_np * 25.0) 
-        final_score = float(max(0, 100.0 - score_penalty))
+        score_penalty = np.sum(p_np * 0.25) 
+        final_score = float(max(0, 1 - score_penalty))
 
         rep_results["results"][seg_id] = {
             "Tilting_to_the_left": float(p_np[0]),
@@ -344,7 +315,7 @@ def run_predict(video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info):
             "Elbows_flaring": float(p_np[3]),
             "score": final_score
         }
-        print(f"[Prediction] Rep {seg_id}: Score {final_score:.1f} (Probs: {p_np})")
+        print(f"[Prediction] Rep {seg_id}: Score {final_score} (Probs: {p_np})")
 
     score_path = os.path.join(video_path, "config", "Score.json")
     os.makedirs(os.path.dirname(score_path), exist_ok=True)

@@ -84,10 +84,10 @@ def save_to_config(title, y_label, y_data, output_file, skeleton_frames):
     config_data = {
         "title": title,
         "y_label": y_label,
-        "y_min": y_min,
-        "y_max": y_max,
+        "y_min": round(y_min, 2),
+        "y_max": round(y_max, 2),
         "frames": skeleton_frames,
-        "values": y_data
+        "values": [round(v, 2) for v in y_data]
     }
 
     # 生成 JSON 配置文件路径
@@ -107,10 +107,28 @@ def run_data_produce(dir):
     skeleton_data = read_skeleton_data(skeleton_file_path)
     skeleton_frames, left_knee_angles, left_hip_angles, body_lengths = calculate_angles_and_length(
         skeleton_data)
+    
+    # Apply Savgol Filter to all series
+    try:
+        from ..Benchpress_tool.hampel import run_savgol_on_series
+        left_knee_angles = run_savgol_on_series(left_knee_angles, window_length=21)
+        left_hip_angles = run_savgol_on_series(left_hip_angles, window_length=21)
+        body_lengths = run_savgol_on_series(body_lengths, window_length=21)
+    except Exception as e:
+        print(f"[DeadliftProduce] Warning: Savgol filtering failed: {e}")
+
     knee_to_hip_ratios = [
         left_knee / left_hip if left_hip != 0 else 0
         for left_knee, left_hip in zip(left_knee_angles, left_hip_angles)
     ]
+    # Filter ratios too
+    try:
+        from ..Benchpress_tool.hampel import run_savgol_on_series
+        knee_to_hip_ratios = run_savgol_on_series(knee_to_hip_ratios, window_length=21)
+    except:
+        pass
+
+
 
     save_to_config(title='Left Knee Angle Over Time',
                 y_label='Angle (degrees)',

@@ -12,11 +12,13 @@ from ..common import (
     DEADLIFT_SKELETON_CONNECTIONS,
 )
 from ..tools.interpolate import run_interpolation
-from ..tools.bar_data_produce import run_bar_data_produce
+from ..tools.Benchpress_tool.hampel import run_hampel_bar, run_hampel_yolo_ske_left_front
+
 from ..tools.Deadlift_tool.data_produce import run_data_produce
 from ..tools.Deadlift_tool.data_split import run_data_split
 from ..tools.Deadlift_tool.predict import run_predict
 from ..tools.trajectory import plot_trajectory
+
 
 class DeadliftProcessor(BaseProcessor):
     def __init__(self):
@@ -54,9 +56,12 @@ class DeadliftProcessor(BaseProcessor):
                 self.models['bar'], 
                 bar_file, 
                 frame_cnt,
-                bone_model=self.models['pose'], 
-                skeleton_connections=self.skeleton_connections
+                skeleton_connections=self.skeleton_connections,
+                bone_model=self.models['pose'],
+                draw=False
             )
+
+
             
             # For Deadlift, bar data is also stored in specific format in b_list
             # But BaseProcessor currently stores only ONE result object per frame per cam
@@ -96,20 +101,25 @@ class DeadliftProcessor(BaseProcessor):
 
     def post_process(self, video_path: str):
         # Run the standard pipeline
-        steps = [
-            ("Interpolation", run_interpolation, [video_path]),
-            ("Bar Data", lambda f: run_bar_data_produce(f, sport='deadlift'), [video_path]),
-            ("Angle Data", run_data_produce, [video_path]),
-            ("Data Split", run_data_split, [video_path]),
-            ("Trajectory Plot", plot_trajectory, [video_path]),
-            ("Prediction", run_predict, [video_path])
-        ]
-        
         import time
-        for name, func, args in steps:
+        memo = {}
+        
+        def run_step(name, func, args, kwargs={}):
             t0 = time.time()
-            func(*args)
-            print(f"[DeadliftProcessor] {name} time :", time.time() - t0)
+            res = func(*args, **kwargs)
+            memo[name] = res
+            print(f"[DeadliftProcessor] {name} time : {time.time() - t0:.2f}s")
+            return res
+
+        run_step("Interpolation", run_interpolation, [video_path])
+        run_step("Hampel Bar", run_hampel_bar, [video_path], {"sport": 'deadlift'})
+        run_step("Hampel Skeleton", run_hampel_yolo_ske_left_front, [video_path])
+        run_step("Angle Data", run_data_produce, [video_path])
+        run_step("Data Split", run_data_split, [video_path])
+        run_step("Trajectory Plot", plot_trajectory, [video_path])
+        run_step("Prediction", run_predict, [video_path])
+
+
             
     def get_result(self, video_path: str, recording=None):
         result = {}

@@ -31,6 +31,7 @@ class RecommendedVideo(models.Model):
     title = models.CharField(max_length=255, null=True, blank=True)
     video_url = models.CharField(max_length=255, null=True, blank=True)
     target_error = models.CharField(max_length=255, null=True, blank=True)
+    language = models.CharField(max_length=10, null=True, blank=True) # "EN" or "ZH"
     
     # 與 Recording 的多對多關聯，指定 through model 以控制 table 名稱與欄位
     recordings = models.ManyToManyField(

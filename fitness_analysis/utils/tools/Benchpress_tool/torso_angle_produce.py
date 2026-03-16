@@ -78,10 +78,10 @@ def dump_angle_json(out_path, title, frames, values):                           
     payload = {                                                                                               # 組物件
         "title": title,                                                                                       # 標題
         "y_label": "Angle (degrees)",                                                                         # Y標籤
-        "y_min": y_min,                                                                                       # y_min
-        "y_max": y_max,                                                                                       # y_max
+        "y_min": round(y_min, 2),                                                                                       # y_min
+        "y_max": round(y_max, 2),                                                                                       # y_max
         "frames": [int(f) for f in frames],                                                                                     # 幀序列
-        "values": processed_values                                                                                      # 角度序列
+        "values": [[round(v, 2) for v in val] if isinstance(val, (list, tuple, np.ndarray)) else round(val, 2) for val in processed_values]                                                                                      # 角度序列
     }
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:                                                          # 開檔
@@ -113,9 +113,20 @@ def run_torso_angle_produce(folder_path, skeleton_dict=None):                   
 
     left_vals, right_vals = compute_angles(frames, kps_all)                                                   # 計算角度
 
-    out_torso = os.path.join(folder_path, "config", "torso_Angle.json")
+    # Apply Savgol filter to angles
+    try:
+        from .hampel import run_savgol_on_series
+        left_vals = run_savgol_on_series(left_vals, window_length=21, polyorder=3)
+        right_vals = run_savgol_on_series(right_vals, window_length=21, polyorder=3)
+    except Exception as e:
+        print(f"[TorsoAngle] Warning: Savgol filtering failed: {e}")
+
+
+
+    out_torso = os.path.join(folder_path, "config", "Torso_Angle.json")
     # Using list() to consume zip and convert tuples to lists for JSON
     combined_values = [list(pair) for pair in zip(left_vals, right_vals)]
+
     payload = dump_angle_json(out_torso, "Elbow–Trunk Angle (L, R)", frames, combined_values)
 
     print(f"✅ 完成！已儲存於：{out_torso}")

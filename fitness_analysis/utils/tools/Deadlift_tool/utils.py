@@ -104,7 +104,19 @@ def find_valley(left_knee_angles):
     valid_angles = np.array([angle for angle in left_knee_angles if angle is not None])
 
     # 平滑化角度
-    smoothed_angles = savgol_filter(valid_angles, window_length=11, polyorder=3)
+    # Safety check: window_length must be less than or equal to size of valid_angles and must be odd
+    win_len = 11
+    if len(valid_angles) < 3:
+        return [], [] # Not enough data to find valleys
+        
+    if win_len >= len(valid_angles):
+        win_len = len(valid_angles) if len(valid_angles) % 2 != 0 else len(valid_angles) - 1
+    
+    if win_len < 3:
+        smoothed_angles = valid_angles
+    else:
+        smoothed_angles = savgol_filter(valid_angles, window_length=win_len, polyorder=3)
+
     peaks, _ = find_peaks(smoothed_angles, height=160, distance=55, prominence=5)
 
     # 波谷檢測
@@ -220,7 +232,13 @@ def calculate_angle1(x1, y1, x2, y2, x3, y3):
     
 def interpolate_features(features, target_length):
     features = np.array(features)  # shape: (original_len, feature_dim)
+    if features.ndim < 2 or features.shape[0] < 2:
+        # Return zeros if not enough data
+        feature_dim = features.shape[1] if features.ndim == 2 else 1
+        return np.zeros((target_length, feature_dim))
+        
     original_len, feature_dim = features.shape
+
 
     # 原本的時間軸 (ex: 0, 1, 2, ..., original_len-1)
     x_original = np.linspace(0, 1, original_len)

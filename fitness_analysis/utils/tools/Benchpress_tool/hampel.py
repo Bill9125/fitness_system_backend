@@ -1,8 +1,7 @@
 import os
-import pandas as pd
 import numpy as np
-import re
 from scipy.interpolate import interp1d
+from ..bar_data_produce import run_bar_data_produce
 
 def hampel_filter(series, window_size=7, n_sigmas=3):
     """
@@ -31,7 +30,38 @@ def hampel_filter(series, window_size=7, n_sigmas=3):
 
     return outlier_mask
 
-def run_hampel_bar(folder_path):
+def run_savgol_on_series(values, window_length=21, polyorder=3):
+    """
+    Apply Savitzky-Golay filter to a series of values, handling Nones and NaNs via interpolation.
+    """
+    from scipy.signal import savgol_filter
+    if not values or len(values) < 3:
+        return np.nan_to_num(values).tolist() # Ensure output is list and NaNs are handled
+        
+    v_arr = np.array([v if v is not None else np.nan for v in values]).astype(float)
+    idx = np.arange(len(v_arr))
+    valid = ~np.isnan(v_arr)
+    
+    if valid.sum() < 2:
+        return np.nan_to_num(v_arr).tolist()
+        
+    # Interpolate
+    interp_func = interp1d(idx[valid], v_arr[valid], kind='linear', fill_value='extrapolate')
+    v_interp = interp_func(idx)
+    
+    # Apply Savgol
+    win_len = window_length
+    if win_len >= len(v_interp):
+        win_len = len(v_interp) if len(v_interp) % 2 != 0 else len(v_interp) - 1
+    if win_len < 3:
+        return v_interp.tolist()
+        
+    v_smooth = savgol_filter(v_interp, window_length=win_len, polyorder=polyorder)
+    return v_smooth.tolist()
+
+
+
+def run_hampel_bar(folder_path, sport='benchpress'):
     """
     Process bar coordinates with Hampel Filter.
     Equivalent to step0_hampel_bar.py
@@ -70,8 +100,14 @@ def run_hampel_bar(folder_path):
         for i, frame in enumerate(frames):
             results[frame] = [values_filtered[i][0], values_filtered[i][1]]
         
+        # 進行插值處理
+        results = interpolate_hampel_dict(results)
+        
+        run_bar_data_produce(folder_path, sport, results)
+        
         print(f"✅ [Hampel Bar] 已處理完畢 (回傳資料量：{len(results)})")
         return results
+
     except Exception as e:
         print(f"❌ [Hampel Bar] 處理失敗：{input_path}, 錯誤：{e}")
         return {}
@@ -188,3 +224,20 @@ def run_hampel_yolo_ske_top(folder_path):
     else:
         print(f"⚠️ [Hampel Top] 無有效資料或找不到檔案：{input_path}")
     return data
+
+def run_hampel_yolo_ske_left_front(folder_path):
+    """
+    Process left-front view skeleton with Hampel Filter (for Deadlift).
+    """
+    input_path = os.path.join(folder_path, "interpolated_skeleton_left-front.txt")
+    
+    # Deadlift seems to use high joint counts, but let's see standard YOLO pose joints
+    # Usually it's 17 joints, checking data_produce.py it uses up to joint 16.
+    data = process_skeleton_file(input_path, None, expected_joints=17)
+    if data:
+        data = interpolate_hampel_dict(data)
+        print(f"✅ [Hampel Left-Front] 已處理完畢 (回傳資料量：{len(data)})")
+    else:
+        print(f"⚠️ [Hampel Left-Front] 無有效資料或找不到檔案：{input_path}")
+    return data
+

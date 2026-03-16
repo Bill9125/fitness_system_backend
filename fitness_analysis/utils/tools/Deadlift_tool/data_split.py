@@ -131,7 +131,7 @@ def process_normalization(features, output_folder):
         np.savetxt(file, normalized_feature, fmt='%.6f', delimiter=',')
 
 def run_data_split(path):
-    feartures = {}
+    features = {}
     visions = ['bar', 'left-back', 'left-front']
     bar_file_path = os.path.join(path, 'coordinates_interpolated.txt')
     bar_data = read_bar_data(bar_file_path)
@@ -143,15 +143,17 @@ def run_data_split(path):
         file = os.path.join(path, f'interpolated_skeleton_{vision}.txt')
         skeleton_data = read_skeleton_data(file)
         frames, left_knee_angles = calculate_angles(skeleton_data)
-        feartures[vision] = {
+        features[vision] = {
             'frames': frames,
             'skeleton': skeleton_data,
             'knee_angles': left_knee_angles
         }
+
         
     print('Find valleys...')
-    reps = adjust_valleys_with_bar_data(path, bar_data, feartures['bar']['knee_angles'])
+    reps = adjust_valleys_with_bar_data(path, bar_data, features['left-front']['knee_angles'])
     print(reps)
+
     
     print('splitting data...')
     for vision in visions:

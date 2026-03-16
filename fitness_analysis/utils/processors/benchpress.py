@@ -23,6 +23,7 @@ from ..tools.Benchpress_tool.hampel import (
 from ..tools.Benchpress_tool.torso_angle_produce import run_torso_angle_produce
 from ..tools.Benchpress_tool.autocutting import run_autocutting
 from ..tools.Benchpress_tool.predict import run_predict
+from ..tools.trajectory import plot_trajectory
 
 class BenchpressProcessor(BaseProcessor):
     def __init__(self):
@@ -105,13 +106,13 @@ class BenchpressProcessor(BaseProcessor):
             return res
 
         run_step("Interpolation", run_interpolation, [video_path])
-        run_step("Bar Data", run_bar_data_produce, [video_path], {"sport": 'benchpress'})
-        bar_dict = run_step("Hampel Bar", run_hampel_bar, [video_path])
+        bar_dict = run_step("Hampel Bar", run_hampel_bar, [video_path], {"sport": 'benchpress'})
         rear_ske_dict = run_step("Hampel Rear", run_hampel_yolo_ske_rear, [video_path])
         top_ske_dict = run_step("Hampel Top", run_hampel_yolo_ske_top, [video_path])
         run_step("Angle Data", run_torso_angle_produce, [video_path], {"skeleton_dict": top_ske_dict})
         split_info = run_step("Autocutting", run_autocutting, [video_path], {"bar_dict": bar_dict, "rear_ske_dict": rear_ske_dict})
         run_step("Predicting", run_predict, [video_path, bar_dict, rear_ske_dict, top_ske_dict, split_info])
+        run_step("Trajectory", plot_trajectory, [video_path])
 
     def get_result(self, folder: str, recording: 'Recording'):
         result = {}
@@ -124,7 +125,7 @@ class BenchpressProcessor(BaseProcessor):
             return None
         
         with open(score_json_path, mode='r', encoding='utf-8') as json_file:
-            score_data = json.load(json_file)
+            score_data = json.load(json_file)["results"]
         with open(bar_position_json_path, mode='r', encoding='utf-8') as json_file:
             bar_position_data = json.load(json_file)
         with open(split_info_json_path, mode='r', encoding='utf-8') as json_file:

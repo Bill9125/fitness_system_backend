@@ -6,7 +6,7 @@ import re
 import ast
 from .models import Recording, Repetition, RecommendedVideo, RecordingRecommendation
 from .utils import ProcessorFactory, OpenAIClient
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from django.conf import settings
 from datetime import datetime
 import shutil
+import subprocess
+from rest_framework import serializers
 
 @extend_schema(
     summary="取得使用者的所有 Recording ID",
@@ -36,13 +38,46 @@ def get_user_recording_ids(request):
     ]
     return JsonResponse(result, safe=False)
 
+class VideoUploadSerializer(serializers.Serializer):
+    sport = serializers.CharField(help_text="運動類型，例如 Benchpress 或 Deadlift")
+    bar_video = serializers.FileField(required=False, help_text="槓鈴視圖影片")
+    left_front_video = serializers.FileField(required=False, help_text="左前方視圖 (硬舉用)")
+    left_back_video = serializers.FileField(required=False, help_text="左後方視圖 (硬舉用)")
+    rear_video = serializers.FileField(required=False, help_text="後方視圖 (臥推用)")
+    top_video = serializers.FileField(required=False, help_text="上方視圖 (臥推用)")
+
+
 @extend_schema(
     summary="上傳訓練影片",
-    description="上傳一或多部影片建立新的 Recording 實體。請以表單(form-data)格式傳送，支援的 key 包含: 'bar_video', 'left_front_video', 'left_back_video' (針對硬舉) 或 'bar_video', 'rear_video', 'top_video' (針對臥推)，以及字串 'sport' (如 'benchpress' 或 'deadlift')。",
-    request=OpenApiTypes.OBJECT,
-    responses={200: dict}
+    description="上傳影片建立新的 Recording。支援 Form-data 格式。",
+    request=VideoUploadSerializer,
+    responses={200: OpenApiTypes.OBJECT}
 )
+
+def reencode_video_on_upload(file_path):
+    """
+    使用 ffmpeg 將上傳的影片統一轉碼為 H.264/AAC 格式，
+    確保分析管線與前端播放的相容性。
+    """
+    tmp_path = file_path + ".tmp.mp4"
+    cmd = [
+        'ffmpeg', '-y', '-i', file_path,
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+        '-movflags', '+faststart',
+        '-c:a', 'aac',
+        tmp_path
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+        os.replace(tmp_path, file_path)
+        print(f"[Upload] Re-encoded {file_path} successfully.")
+    except Exception as e:
+        print(f"[Upload] Re-encoding failed for {file_path}: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 @api_view(['POST'])
+
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
 def upload_video(request):
@@ -51,7 +86,7 @@ def upload_video(request):
     
     # 建立目錄結構 (格式: recordings/sport_name/recording_YYYYMMDD_HHMMSS/)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    folder_name = f"recordings/{sport}/recording_{timestamp}"
+    folder_name = f"recordings/{sport.lower()}/recording_{timestamp}"
     folder_path = os.path.join(settings.BASE_DIR, folder_name)
     os.makedirs(folder_path, exist_ok=True)
     
@@ -74,7 +109,12 @@ def upload_video(request):
             with open(file_path, 'wb+') as dest:
                 for chunk in uploaded_file.chunks():
                     dest.write(chunk)
+            
+            # 立即執行轉檔優化
+            reencode_video_on_upload(file_path)
+            
             uploaded_count += 1
+
             
     if uploaded_count == 0:
         # 如果其實什麼檔案都沒上傳，也可以決定把資料夾刪掉並回傳 Error
@@ -92,7 +132,7 @@ def upload_video(request):
         "message": "Videos uploaded successfully",
         "recording_id": recording.id,
         "folder": folder_name,
-        "sport": sport,
+        "sport": sport.capitalize(),
         "uploaded_files_count": uploaded_count
     })
 
@@ -369,5 +409,4 @@ def get_recommendations(request, recording_id: int):
             if times >= 5:
                 break
             continue
-
     return JsonResponse({'result': result})
