@@ -23,6 +23,8 @@ urlpatterns = [
     path('fitness_analysis/api/admin/', admin.site.urls),
     path('fitness_analysis/api/analysis/', include('fitness_analysis.urls')),
     path('fitness_analysis/api/users/', include('users.urls')),
+    path('fitness_analysis/api/video_upload/', include('video_upload.urls')),
+    path('fitness_analysis/api/fatigue/', include('fatigue_analysis.urls')),
     path('fitness_analysis/api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('fitness_analysis/api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]

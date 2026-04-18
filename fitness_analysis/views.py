@@ -6,17 +6,10 @@ import re
 import ast
 from .models import Recording, Repetition, RecommendedVideo, RecordingRecommendation
 from .utils import ProcessorFactory, OpenAIClient
-from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from rest_framework.decorators import api_view, permission_classes, parser_classes
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from django.conf import settings
-from datetime import datetime
-import shutil
-import subprocess
-from rest_framework import serializers
 
 @extend_schema(
     summary="取得使用者的所有 Recording ID",
@@ -32,109 +25,12 @@ def get_user_recording_ids(request):
         {
             "id": r.id,
             "sport": r.sport,
+            "tag": r.tag,
             "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S")
         } 
         for r in recordings
     ]
     return JsonResponse(result, safe=False)
-
-class VideoUploadSerializer(serializers.Serializer):
-    sport = serializers.CharField(help_text="運動類型，例如 Benchpress 或 Deadlift")
-    bar_video = serializers.FileField(required=False, help_text="槓鈴視圖影片")
-    left_front_video = serializers.FileField(required=False, help_text="左前方視圖 (硬舉用)")
-    left_back_video = serializers.FileField(required=False, help_text="左後方視圖 (硬舉用)")
-    rear_video = serializers.FileField(required=False, help_text="後方視圖 (臥推用)")
-    top_video = serializers.FileField(required=False, help_text="上方視圖 (臥推用)")
-
-
-@extend_schema(
-    summary="上傳訓練影片",
-    description="上傳影片建立新的 Recording。支援 Form-data 格式。",
-    request=VideoUploadSerializer,
-    responses={200: OpenApiTypes.OBJECT}
-)
-
-def reencode_video_on_upload(file_path):
-    """
-    使用 ffmpeg 將上傳的影片統一轉碼為 H.264/AAC 格式，
-    確保分析管線與前端播放的相容性。
-    """
-    tmp_path = file_path + ".tmp.mp4"
-    cmd = [
-        'ffmpeg', '-y', '-i', file_path,
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-        '-movflags', '+faststart',
-        '-c:a', 'aac',
-        tmp_path
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True)
-        os.replace(tmp_path, file_path)
-        print(f"[Upload] Re-encoded {file_path} successfully.")
-    except Exception as e:
-        print(f"[Upload] Re-encoding failed for {file_path}: {e}")
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-@api_view(['POST'])
-
-@permission_classes([IsAuthenticated])
-@parser_classes([MultiPartParser, FormParser])
-def upload_video(request):
-    user = request.user
-    sport = request.data.get('sport', 'unknown_sport')
-    
-    # 建立目錄結構 (格式: recordings/sport_name/recording_YYYYMMDD_HHMMSS/)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    folder_name = f"recordings/{sport.lower()}/recording_{timestamp}"
-    folder_path = os.path.join(settings.BASE_DIR, folder_name)
-    os.makedirs(folder_path, exist_ok=True)
-    
-    # 解析檔案
-    # 允許的前端上傳欄位與後端需要的檔名對應
-    # Ex: frontend sends 'bar_video' -> save as 'vision_bar.mp4'
-    file_mapping = {
-        'bar_video': 'vision_bar.mp4',
-        'left_front_video': 'vision_left-front.mp4',
-        'left_back_video': 'vision_left-back.mp4',
-        'rear_video': 'vision_rear.mp4',
-        'top_video': 'vision_top.mp4',
-    }
-    
-    uploaded_count = 0
-    for file_key, target_name in file_mapping.items():
-        uploaded_file = request.FILES.get(file_key)
-        if uploaded_file:
-            file_path = os.path.join(folder_path, target_name)
-            with open(file_path, 'wb+') as dest:
-                for chunk in uploaded_file.chunks():
-                    dest.write(chunk)
-            
-            # 立即執行轉檔優化
-            reencode_video_on_upload(file_path)
-            
-            uploaded_count += 1
-
-            
-    if uploaded_count == 0:
-        # 如果其實什麼檔案都沒上傳，也可以決定把資料夾刪掉並回傳 Error
-        shutil.rmtree(folder_path, ignore_errors=True)
-        return JsonResponse({"error": "No valid video files uploaded."}, status=400)
-        
-    # 建立 Recording 到資料庫並綁定當前登入者
-    recording = Recording.objects.create(
-        user=user,
-        sport=sport,
-        folder=folder_name,
-    )
-    
-    return JsonResponse({
-        "message": "Videos uploaded successfully",
-        "recording_id": recording.id,
-        "folder": folder_name,
-        "sport": sport.capitalize(),
-        "uploaded_files_count": uploaded_count
-    })
 
 @extend_schema(
     summary="取得動作偵測結果（含分數、角度、分段資訊），如果已經有predict過的會直接回傳，不會再重新predict",
@@ -154,7 +50,7 @@ def get_detection_result(request, recording_id: int):
     folder = recording.folder
     sport_type = recording.sport
     processor = ProcessorFactory.get_processor(sport_type)
-    if repetitions.exists():
+    if not repetitions.exists():
         start_time = time.time()
         processor.run(folder)
         end_time = time.time()

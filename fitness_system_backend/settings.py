@@ -78,6 +78,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'drf_spectacular',
+    'video_upload',
+    'fatigue_analysis.apps.FatigueAnalysisConfig',
 ]
 
 MIDDLEWARE = [

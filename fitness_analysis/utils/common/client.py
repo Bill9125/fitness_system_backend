@@ -73,6 +73,8 @@ class OpenAIClient:
 
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
+            # 將 key 從 0 開始改為從 1 開始
+            score_data = {str(int(k) + 1): v for k, v in score_data.items()}
 
         sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
@@ -103,6 +105,8 @@ class OpenAIClient:
 
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
+            # 將 key 從 0 開始改為從 1 開始
+            score_data = {str(int(k) + 1): v for k, v in score_data.items()}
 
         sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
@@ -136,6 +140,9 @@ class OpenAIClient:
 
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
+            # 將 key 從 0 開始改為從 1 開始
+            score_data = {str(int(k) + 1): v for k, v in score_data.items()}
+            
         sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (
             f"你是一個健身教練，這是我在做一組{sport_name_zh}訓練時發生的錯誤--{score_data}，"
@@ -166,6 +173,8 @@ class OpenAIClient:
 
         with open(score_json_path, mode='r', encoding='utf-8') as f:
             score_data = json.load(f)['results']
+            # 將 key 從 0 開始改為從 1 開始
+            score_data = {str(int(k) + 1): v for k, v in score_data.items()}
 
         sport_name_zh = self._get_sport_name_zh(recording.sport)
         prompt = (

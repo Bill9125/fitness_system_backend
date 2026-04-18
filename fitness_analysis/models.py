@@ -3,16 +3,17 @@ from django.contrib.auth.models import User
 
 class Recording(models.Model):
     # 關聯到 Django 內建的 User
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='recordings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fitness_recordings')
     sport = models.CharField(max_length=50, null=True, blank=True)
     folder = models.CharField(max_length=255, null=True, blank=True)
     total_frames = models.IntegerField(null=True, blank=True)
     training_suggestion = models.TextField(null=True, blank=True)
     workout_plan = models.TextField(null=True, blank=True)
+    tag = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        db_table = 'recordings'
+        db_table = 'recordings_fitness'
 
     def __str__(self):
         return f"{self.user.username} - {self.sport} ({self.created_at})"

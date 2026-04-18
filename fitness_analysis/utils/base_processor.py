@@ -185,6 +185,7 @@ class BaseProcessor(ABC):
             if os.path.exists(raw_path):
                 cmd = [
                     'ffmpeg', '-y', '-i', raw_path,
+                    '-r', '30',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                     '-movflags', '+faststart',
                     '-c:a', 'aac',
